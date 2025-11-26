@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Paperless-ngx Uploader",
+  "name": "Paperless-ngx Upload",
   "version": "0.8.3",
   "description": "Upload Emails and attachments directly to Paperless-ngx from Thunderbird",
   "browser_specific_settings": {
