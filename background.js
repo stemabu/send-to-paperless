@@ -4,6 +4,9 @@ console.log("Paperless PDF Uploader loaded!");
 let currentPdfAttachments = [];
 let currentMessage = null;
 
+// Constants
+const PAPERLESS_TAG_KEY = 'paperless';
+
 // Create context menus for attachments
 browser.runtime.onInstalled.addListener(async () => {
   // Remove all existing menus first to avoid conflicts
@@ -874,10 +877,9 @@ async function uploadEmailAsPdf(messageData, selectedAttachments, uploadOptions)
         const attFormData = new FormData();
         attFormData.append('document', attachmentData, attachment.name);
 
-        // Use same metadata for attachments
-        if (uploadOptions.title) {
-          attFormData.append('title', attachment.name.replace(/\.[^/.]+$/, ''));
-        }
+        // Use attachment filename without extension as title
+        attFormData.append('title', attachment.name.replace(/\.[^/.]+$/, ''));
+        
         if (uploadOptions.correspondent) {
           attFormData.append('correspondent', uploadOptions.correspondent);
         }
@@ -991,13 +993,9 @@ async function addPaperlessTagToEmail(messageId) {
     const message = await browser.messages.get(messageId);
     const currentTags = message.tags || [];
 
-    // Check if 'paperless' tag already exists in Thunderbird
-    // The tag key is typically lowercase without spaces
-    const paperlessTagKey = 'paperless';
-
     // Only add if not already present
-    if (!currentTags.includes(paperlessTagKey)) {
-      const newTags = [...currentTags, paperlessTagKey];
+    if (!currentTags.includes(PAPERLESS_TAG_KEY)) {
+      const newTags = [...currentTags, PAPERLESS_TAG_KEY];
       
       // Update message tags
       await browser.messages.update(messageId, {

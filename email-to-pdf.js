@@ -240,17 +240,6 @@ function generateEmailHtml(emailData) {
 }
 
 /**
- * Create a Blob from HTML content for upload
- * @param {string} htmlContent - HTML content string
- * @param {string} filename - Filename for the blob
- * @returns {File} File object ready for upload
- */
-function createHtmlFile(htmlContent, filename) {
-  const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
-  return new File([blob], filename, { type: 'text/html' });
-}
-
-/**
  * Generate a filename from email subject
  * @param {string} subject - Email subject
  * @param {Date|string} date - Email date
@@ -276,6 +265,5 @@ if (typeof window !== 'undefined') {
   window.formatDateGerman = formatDateGerman;
   window.escapeHtml = escapeHtml;
   window.generateEmailHtml = generateEmailHtml;
-  window.createHtmlFile = createHtmlFile;
   window.generateEmailFilename = generateEmailFilename;
 }
