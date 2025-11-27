@@ -22,7 +22,7 @@ browser.runtime.onInstalled.addListener(async () => {
   // E-Mail mit Anhängen hochladen (first option)
   browser.menus.create({
     id: "email-to-paperless",
-    title: "E-Mail mit Anhaengen hochladen",
+    title: "E-Mail mit Anhängen hochladen",
     contexts: ["message_list"],
     icons: {
       "32": "icons/icon-32.png",
@@ -60,7 +60,7 @@ async function handleAdvancedPdfUpload(info) {
   try {
     const messages = info.selectedMessages.messages;
     if (!messages || messages.length === 0) {
-      showNotification("Keine Nachricht ausgewaehlt", "error");
+      showNotification("Keine Nachricht ausgewählt", "error");
       return;
     }
 
@@ -75,7 +75,7 @@ async function handleAdvancedPdfUpload(info) {
     );
 
     if (pdfAttachments.length === 0) {
-      showNotification("Keine PDF-Anhaenge in der Nachricht gefunden", "info");
+      showNotification("Keine PDF-Anhänge in der Nachricht gefunden", "info");
       return;
     }
 
@@ -88,7 +88,7 @@ async function handleAdvancedPdfUpload(info) {
 
   } catch (error) {
     console.error("Error handling advanced PDF upload:", error);
-    showNotification("Fehler beim Verarbeiten der Anhaenge", "error");
+    showNotification("Fehler beim Verarbeiten der Anhänge", "error");
   }
 }
 
