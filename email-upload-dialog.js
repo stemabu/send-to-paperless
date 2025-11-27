@@ -36,6 +36,8 @@ function getFileIcon(filename) {
 
 document.addEventListener('DOMContentLoaded', async function () {
   await loadEmailData();
+  await loadCorrespondents();
+  await loadTags();
   setupEventListeners();
 });
 
@@ -100,6 +102,56 @@ async function loadEmailData() {
     console.error('📧 Error loading email data:', error);
     console.error('📧 Error stack:', error.stack);
     showError('Fehler beim Laden der E-Mail-Daten: ' + error.message);
+  }
+}
+
+async function loadCorrespondents() {
+  try {
+    const settings = await getPaperlessSettings();
+    if (!settings.paperlessUrl || !settings.paperlessToken) {
+      return;
+    }
+
+    const response = await makePaperlessRequest('/api/correspondents/', {}, settings);
+
+    if (response.ok) {
+      const data = await response.json();
+      const select = document.getElementById('correspondent');
+      
+      data.results.forEach(correspondent => {
+        const option = document.createElement('option');
+        option.value = correspondent.id;
+        option.textContent = correspondent.name;
+        select.appendChild(option);
+      });
+    }
+  } catch (error) {
+    console.error('Error loading correspondents:', error);
+  }
+}
+
+async function loadTags() {
+  try {
+    const settings = await getPaperlessSettings();
+    if (!settings.paperlessUrl || !settings.paperlessToken) {
+      return;
+    }
+
+    const response = await makePaperlessRequest('/api/tags/', {}, settings);
+
+    if (response.ok) {
+      const data = await response.json();
+      const select = document.getElementById('tags');
+      
+      data.results.forEach(tag => {
+        const option = document.createElement('option');
+        option.value = tag.id;
+        option.textContent = tag.name;
+        select.appendChild(option);
+      });
+    }
+  } catch (error) {
+    console.error('Error loading tags:', error);
   }
 }
 
@@ -181,7 +233,7 @@ function generateEmailPdf() {
 
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
-  const margin = 15;
+  const margin = 10;  // 1cm margin
   const contentWidth = pageWidth - (margin * 2);
   let yPosition = margin;
 
@@ -208,86 +260,88 @@ function generateEmailPdf() {
   const selectedAttachments = getSelectedAttachments();
   let attachmentText = '';
   if (selectedAttachments.length > 0) {
-    attachmentText = selectedAttachments.map(att => `${getFileIcon(att.name)} ${att.name}`).join(', ');
+    attachmentText = selectedAttachments.map(att => att.name).join(', ');
   }
 
-  // Calculate actual header height
+  // Calculate actual header height with 1.3 line spacing
   doc.setFontSize(10);
+  const lineHeight = 4;  // Base line height for 1.3 spacing at font size 10
   const subjectLines = doc.splitTextToSize(currentMessage.subject || '', contentWidth - 50);
   const fromLines = doc.splitTextToSize(currentMessage.author || '', contentWidth - 30);
   const toLines = recipients ? doc.splitTextToSize(recipients, contentWidth - 30) : [];
   const attachmentLines = attachmentText ? doc.splitTextToSize(attachmentText, contentWidth - 50) : [];
   
-  headerHeight = 20 + // Date line + padding
-    (fromLines.length * 5) + // From lines
-    (toLines.length > 0 ? toLines.length * 5 + 5 : 5) + // To lines or spacing
-    (subjectLines.length * 6) + // Subject lines (slightly larger)
-    (attachmentLines.length > 0 ? attachmentLines.length * 5 + 5 : 0) + // Attachment lines
-    10; // Bottom padding
+  headerHeight = 8 + // Top padding
+    lineHeight + // Date line
+    (fromLines.length * lineHeight) + // From lines
+    (toLines.length > 0 ? toLines.length * lineHeight : 0) + // To lines
+    (subjectLines.length * lineHeight) + // Subject lines
+    (attachmentLines.length > 0 ? attachmentLines.length * lineHeight : 0) + // Attachment lines
+    4; // Bottom padding
 
   // Draw header background
   doc.setFillColor(240, 240, 240);
   doc.rect(margin, margin, contentWidth, headerHeight, 'F');
 
-  yPosition = margin + 5;
+  yPosition = margin + 4;
 
   // Date line
   doc.setFontSize(10);
   doc.setFont('helvetica', 'bold');
-  doc.text('Datum:', margin + 5, yPosition + 4);
+  doc.text('Datum:', margin + 3, yPosition + 3);
   doc.setFont('helvetica', 'normal');
-  doc.text(emailDate, margin + 30, yPosition + 4);
-  yPosition += 7;
+  doc.text(emailDate, margin + 25, yPosition + 3);
+  yPosition += lineHeight;
 
   // From line
   doc.setFont('helvetica', 'bold');
-  doc.text('Von:', margin + 5, yPosition + 4);
+  doc.text('Von:', margin + 3, yPosition + 3);
   doc.setFont('helvetica', 'normal');
   fromLines.forEach((line, index) => {
-    doc.text(line, margin + 30, yPosition + 4 + (index * 5));
+    doc.text(line, margin + 25, yPosition + 3 + (index * lineHeight));
   });
-  yPosition += 7 + ((fromLines.length - 1) * 5);
+  yPosition += lineHeight + ((fromLines.length - 1) * lineHeight);
 
   // To line (if recipients exist)
   if (recipients) {
     doc.setFont('helvetica', 'bold');
-    doc.text('An:', margin + 5, yPosition + 4);
+    doc.text('An:', margin + 3, yPosition + 3);
     doc.setFont('helvetica', 'normal');
     toLines.forEach((line, index) => {
-      doc.text(line, margin + 30, yPosition + 4 + (index * 5));
+      doc.text(line, margin + 25, yPosition + 3 + (index * lineHeight));
     });
-    yPosition += 7 + ((toLines.length - 1) * 5);
+    yPosition += lineHeight + ((toLines.length - 1) * lineHeight);
   }
 
   // Subject line (bold)
   doc.setFont('helvetica', 'bold');
-  doc.text('Betreff:', margin + 5, yPosition + 4);
+  doc.text('Betreff:', margin + 3, yPosition + 3);
   doc.setFont('helvetica', 'bold');
   subjectLines.forEach((line, index) => {
-    doc.text(line, margin + 30, yPosition + 4 + (index * 6));
+    doc.text(line, margin + 25, yPosition + 3 + (index * lineHeight));
   });
-  yPosition += 8 + ((subjectLines.length - 1) * 6);
+  yPosition += lineHeight + ((subjectLines.length - 1) * lineHeight);
 
   // Attachments line (if any)
   if (attachmentText) {
     doc.setFont('helvetica', 'bold');
-    doc.text('Anhänge:', margin + 5, yPosition + 4);
+    doc.text('Anhaenge:', margin + 3, yPosition + 3);
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(9);
     attachmentLines.forEach((line, index) => {
-      doc.text(line, margin + 30, yPosition + 4 + (index * 5));
+      doc.text(line, margin + 25, yPosition + 3 + (index * lineHeight));
     });
-    yPosition += 7 + ((attachmentLines.length - 1) * 5);
+    yPosition += lineHeight + ((attachmentLines.length - 1) * lineHeight);
     doc.setFontSize(10);
   }
 
-  // Horizontal line separator
-  yPosition = margin + headerHeight + 2;
+  // Horizontal line separator - right after header
+  yPosition = margin + headerHeight;
   doc.setDrawColor(180, 180, 180);
   doc.setLineWidth(0.5);
   doc.line(margin, yPosition, pageWidth - margin, yPosition);
 
-  yPosition += 8;
+  yPosition += 5;
 
   // Email body
   doc.setFont('helvetica', 'normal');
@@ -301,17 +355,17 @@ function generateEmailPdf() {
 
   // Split body into lines that fit the page width
   const bodyLines = doc.splitTextToSize(bodyText, contentWidth);
-  const lineHeight = 5;
+  const bodyLineHeight = 5;
 
   for (const line of bodyLines) {
     // Check if we need a new page
-    if (yPosition + lineHeight > pageHeight - margin) {
+    if (yPosition + bodyLineHeight > pageHeight - margin) {
       doc.addPage();
       yPosition = margin;
     }
     
     doc.text(line, margin, yPosition);
-    yPosition += lineHeight;
+    yPosition += bodyLineHeight;
   }
 
   // Generate filename
@@ -383,8 +437,22 @@ async function handleUpload(event) {
     const direction = document.getElementById('direction').value;
     const selectedAttachments = getSelectedAttachments();
 
+    // Get correspondent
+    const correspondentSelect = document.getElementById('correspondent');
+    const correspondent = correspondentSelect.value ? parseInt(correspondentSelect.value) : null;
+
+    // Get tags
+    const tagsSelect = document.getElementById('tags');
+    const selectedTags = Array.from(tagsSelect.selectedOptions).map(opt => parseInt(opt.value));
+
+    // Get document date from email date
+    const documentDate = currentMessage.date ? new Date(currentMessage.date).toISOString().split('T')[0] : null;
+
     console.log('📤 Upload parameters:');
     console.log('📤 - Direction:', direction);
+    console.log('📤 - Correspondent:', correspondent);
+    console.log('📤 - Tags:', selectedTags);
+    console.log('📤 - Document Date:', documentDate);
     console.log('📤 - Selected attachments:', selectedAttachments.length);
     selectedAttachments.forEach((att, i) => {
       console.log(`📤   [${i}] ${att.name} (${att.contentType}, partName: ${att.partName})`);
@@ -412,13 +480,16 @@ async function handleUpload(event) {
         filename: pdfFilename
       },
       selectedAttachments: selectedAttachments,
-      direction: direction
+      direction: direction,
+      correspondent: correspondent,
+      tags: selectedTags,
+      documentDate: documentDate
     });
 
     console.log('📤 Received result from background:', JSON.stringify(result));
 
     if (result && result.success) {
-      let successMsg = 'E-Mail und Anhänge wurden erfolgreich an Paperless-ngx gesendet!';
+      let successMsg = 'E-Mail und Anhaenge wurden erfolgreich an Paperless-ngx gesendet!';
       
       // Show warning if document is still processing
       if (result.warning) {
