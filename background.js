@@ -396,40 +396,15 @@ async function updateDocumentCustomFields(config, documentId, customFields) {
 
 // Add "Paperless" keyword to email in Thunderbird
 async function addPaperlessTagToEmail(messageId) {
-  console.log('🏷️ Adding Paperless keyword to email, messageId:', messageId);
+  console.log('🏷️ Skipping Paperless tag - Thunderbird API not supported');
+  console.log('🏷️ MessageId:', messageId);
   
-  try {
-    // Get current message to preserve existing tags/keywords
-    const message = await browser.messages.get(messageId);
-    console.log('🏷️ Current message keywords:', message.keywords);
-    
-    // The "Paperless" keyword (lowercase is standard)
-    const paperlessKeyword = 'paperless';
-    
-    // Check if keyword already exists
-    if (message.keywords && message.keywords.includes(paperlessKeyword)) {
-      console.log('🏷️ Email already has Paperless keyword');
-      return true;
-    }
-    
-    // Add the Paperless keyword to existing keywords
-    const newKeywords = message.keywords ? [...message.keywords, paperlessKeyword] : [paperlessKeyword];
-    console.log('🏷️ Updating message with keywords:', newKeywords);
-    
-    // Update the message with new keywords
-    await browser.messages.update(messageId, { 
-      keywords: newKeywords 
-    });
-    
-    console.log('🏷️ Successfully added Paperless keyword to email');
-    return true;
-    
-  } catch (error) {
-    console.error('🏷️ Error adding Paperless keyword to email:', error);
-    console.error('🏷️ Error details:', error.message, error.stack);
-    // Don't throw - keyword assignment is not critical for upload success
-    return false;
-  }
+  // TODO: Thunderbird's messages.update() API does not support the "keywords" property
+  // and messages.listTags() is not available in all versions.
+  // This functionality is disabled until a compatible API is found.
+  // Users can manually tag emails with "Paperless" in Thunderbird if needed.
+  
+  return true;
 }
 
 // Upload email PDF and attachments with custom fields
@@ -502,9 +477,10 @@ async function uploadEmailWithAttachments(messageData, emailPdfData, selectedAtt
     }
 
     // Prepare direction custom field value with the option ID (not the label!)
+    // Note: Paperless-ngx select fields require a single string value, not an array
     const directionCustomField = directionOptionId ? {
       field: directionField.id,
-      value: [directionOptionId]  // Use the ID, not the label!
+      value: String(directionOptionId)  // Use the ID as a string, not an array!
     } : null;
     
     if (!directionCustomField) {
