@@ -1,24 +1,24 @@
 document.addEventListener('DOMContentLoaded', async function () {
-  const quickUploadBtn = document.getElementById('quick-upload-btn');
-  const advancedUploadBtn = document.getElementById('advanced-upload-btn');
+  const uploadEmailBtn = document.getElementById('upload-email-btn');
+  const uploadAttachmentsBtn = document.getElementById('upload-attachments-btn');
   const errorContainer = document.getElementById('error-container');
 
-  quickUploadBtn.addEventListener('click', async () => {
-    await handleQuickUpload(errorContainer);
+  uploadEmailBtn.addEventListener('click', async () => {
+    await handleEmailUpload(errorContainer);
   });
 
-  advancedUploadBtn.addEventListener('click', async () => {
-    await handleAdvancedUpload(errorContainer);
+  uploadAttachmentsBtn.addEventListener('click', async () => {
+    await handleAttachmentsUpload(errorContainer);
   });
 });
 
-async function handleQuickUpload(errorContainer) {
+async function handleEmailUpload(errorContainer) {
   try {
     clearError(errorContainer);
     const currentTab = await getCurrentTab();
 
     if (!currentTab) {
-      showError(errorContainer, 'Unable to determine current tab');
+      showError(errorContainer, 'Aktueller Tab konnte nicht ermittelt werden');
       return;
     }
 
@@ -33,31 +33,31 @@ async function handleQuickUpload(errorContainer) {
     }
 
     if (!message) {
-      showError(errorContainer, 'No message is currently displayed');
+      showError(errorContainer, 'Keine Nachricht wird angezeigt');
       return;
     }
 
-    // Send message to background script for quick upload
+    // Send message to background script for email upload
     await browser.runtime.sendMessage({
-      action: 'quickUploadFromDisplay',
+      action: 'emailUploadFromDisplay',
       messageId: message.id
     });
 
     // Close the popup
     window.close();
   } catch (error) {
-    console.error('Error in quick upload:', error);
-    showError(errorContainer, 'Error initiating quick upload');
+    console.error('Error in email upload:', error);
+    showError(errorContainer, 'Fehler beim Starten des E-Mail-Uploads');
   }
 }
 
-async function handleAdvancedUpload(errorContainer) {
+async function handleAttachmentsUpload(errorContainer) {
   try {
     clearError(errorContainer);
     const currentTab = await getCurrentTab();
 
     if (!currentTab) {
-      showError(errorContainer, 'Unable to determine current tab');
+      showError(errorContainer, 'Aktueller Tab konnte nicht ermittelt werden');
       return;
     }
 
@@ -72,11 +72,11 @@ async function handleAdvancedUpload(errorContainer) {
     }
 
     if (!message) {
-      showError(errorContainer, 'No message is currently displayed');
+      showError(errorContainer, 'Keine Nachricht wird angezeigt');
       return;
     }
 
-    // Send message to background script for advanced upload
+    // Send message to background script for attachments upload (was advanced upload)
     await browser.runtime.sendMessage({
       action: 'advancedUploadFromDisplay',
       messageId: message.id
@@ -85,8 +85,8 @@ async function handleAdvancedUpload(errorContainer) {
     // Close the popup
     window.close();
   } catch (error) {
-    console.error('Error in advanced upload:', error);
-    showError(errorContainer, 'Error initiating advanced upload');
+    console.error('Error in attachments upload:', error);
+    showError(errorContainer, 'Fehler beim Starten des Anhang-Uploads');
   }
 }
 

@@ -315,14 +315,30 @@
             <option value="Eingang" selected>Eingang</option>
             <option value="Ausgang">Ausgang</option>
           </select>
-          <div class="help-text">Wird für E-Mail und alle Anhänge gesetzt</div>
+          <div class="help-text">Wird fuer E-Mail und alle Anhaenge gesetzt</div>
+        </div>
+
+        <div class="form-group">
+          <label for="correspondent">Korrespondent (optional)</label>
+          <select id="correspondent" name="correspondent">
+            <option value="">Keinen Korrespondenten auswaehlen</option>
+            <!-- Wird dynamisch befuellt -->
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="tags">Tags (optional)</label>
+          <select id="tags" name="tags" multiple size="4">
+            <!-- Wird dynamisch befuellt -->
+          </select>
+          <div class="help-text">Mehrfachauswahl mit Strg/Cmd</div>
         </div>
 
         <div id="attachmentSection" class="attachment-section" style="display: none;">
-          <h4>📎 Anhänge</h4>
+          <h4>Anhaenge</h4>
           <div class="controls">
-            <button type="button" class="btn-link" id="selectAllBtn">Alle auswählen</button>
-            <button type="button" class="btn-link" id="selectNoneBtn">Keine auswählen</button>
+            <button type="button" class="btn-link" id="selectAllBtn">Alle auswaehlen</button>
+            <button type="button" class="btn-link" id="selectNoneBtn">Keine auswaehlen</button>
           </div>
           <div id="attachmentList" class="attachment-list">
             <!-- Attachments will be populated here -->

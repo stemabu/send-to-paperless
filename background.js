@@ -19,36 +19,10 @@ browser.runtime.onInstalled.addListener(async () => {
   await browser.menus.removeAll();
 
   // Message list context menus
-  // Quick upload option
-  browser.menus.create({
-    id: "quick-upload-pdf-paperless",
-    title: "Quick Upload to Paperless-ngx",
-    contexts: ["message_list"],
-    icons: {
-      "32": "icons/icon-32.png",
-      "16": "icons/icon-16.png",
-      "64": "icons/icon-64.png",
-      "128": "icons/icon-128.png"
-    }
-  });
-
-  // Advanced upload option with dialog
-  browser.menus.create({
-    id: "advanced-upload-pdf-paperless",
-    title: "Upload to Paperless-ngx (with options)...",
-    contexts: ["message_list"],
-    icons: {
-      "32": "icons/icon-32.png",
-      "16": "icons/icon-16.png",
-      "64": "icons/icon-64.png",
-      "128": "icons/icon-128.png"
-    }
-  });
-
-  // New: Email to Paperless-ngx option
+  // E-Mail mit Anhängen hochladen (first option)
   browser.menus.create({
     id: "email-to-paperless",
-    title: "E-Mail an Paperless-ngx senden",
+    title: "E-Mail mit Anhaengen hochladen",
     contexts: ["message_list"],
     icons: {
       "32": "icons/icon-32.png",
@@ -58,49 +32,35 @@ browser.runtime.onInstalled.addListener(async () => {
     }
   });
 
-  // Separator
+  // Nur Anhang hochladen (second option, was "Advanced Upload")
   browser.menus.create({
-    id: "separator",
-    type: "separator",
-    contexts: ["message_list"]
+    id: "upload-attachments-only",
+    title: "Nur Anhang hochladen",
+    contexts: ["message_list"],
+    icons: {
+      "32": "icons/icon-32.png",
+      "16": "icons/icon-16.png",
+      "64": "icons/icon-64.png",
+      "128": "icons/icon-128.png"
+    }
   });
 });
 
 // Handle context menu clicks
 browser.menus.onClicked.addListener(async (info, tab) => {
   // Message list context menu handlers
-  if (info.menuItemId === "quick-upload-pdf-paperless") {
-    await handleQuickPdfUpload(info);
-  } else if (info.menuItemId === "advanced-upload-pdf-paperless") {
-    await handleAdvancedPdfUpload(info);
-  } else if (info.menuItemId === "email-to-paperless") {
+  if (info.menuItemId === "email-to-paperless") {
     await handleEmailToPaperless(info);
+  } else if (info.menuItemId === "upload-attachments-only") {
+    await handleAdvancedPdfUpload(info);
   }
 });
-
-async function handleQuickPdfUpload(info) {
-  try {
-    const messages = info.selectedMessages.messages;
-    if (!messages || messages.length === 0) {
-      showNotification("No messages selected", "error");
-      return;
-    }
-
-    // Process each selected message for PDF attachments
-    for (const message of messages) {
-      await processQuickPdfUpload(message);
-    }
-  } catch (error) {
-    console.error("Error handling quick PDF upload:", error);
-    showNotification("Error processing attachments", "error");
-  }
-}
 
 async function handleAdvancedPdfUpload(info) {
   try {
     const messages = info.selectedMessages.messages;
     if (!messages || messages.length === 0) {
-      showNotification("No messages selected", "error");
+      showNotification("Keine Nachricht ausgewaehlt", "error");
       return;
     }
 
@@ -115,7 +75,7 @@ async function handleAdvancedPdfUpload(info) {
     );
 
     if (pdfAttachments.length === 0) {
-      showNotification("No PDF attachments found in selected message", "info");
+      showNotification("Keine PDF-Anhaenge in der Nachricht gefunden", "info");
       return;
     }
 
@@ -128,35 +88,7 @@ async function handleAdvancedPdfUpload(info) {
 
   } catch (error) {
     console.error("Error handling advanced PDF upload:", error);
-    showNotification("Error processing attachments", "error");
-  }
-}
-
-async function processQuickPdfUpload(message) {
-  try {
-    const attachments = await browser.messages.listAttachments(message.id);
-    const pdfAttachments = attachments.filter(attachment =>
-      attachment.contentType === "application/pdf" ||
-      attachment.name.toLowerCase().endsWith('.pdf')
-    );
-
-    if (pdfAttachments.length === 0) {
-      showNotification("No PDF attachments found in selected messages", "info");
-      return;
-    }
-
-    // If there's only one attachment, upload directly
-    if (pdfAttachments.length === 1) {
-      await uploadPdfToPaperless(message, pdfAttachments[0], { mode: 'quick' });
-      return;
-    }
-
-    // If there are multiple attachments, show selection dialog
-    await openAttachmentSelectionDialog(message, pdfAttachments);
-
-  } catch (error) {
-    console.error("Error processing PDF attachments:", error);
-    showNotification(`Error processing attachments: ${error.message}`, "error");
+    showNotification("Fehler beim Verarbeiten der Anhaenge", "error");
   }
 }
 
@@ -408,80 +340,22 @@ function findPaperlessTag(tags) {
 }
 
 // Add "Paperless" keyword to email in Thunderbird
+// Temporarily disabled - user will implement this separately
 async function addPaperlessTagToEmail(messageId) {
-  console.log('🏷️ Adding Paperless tag to email, messageId:', messageId);
-  
-  try {
-    // Get all existing tags in Thunderbird
-    console.log('🏷️ Fetching existing Thunderbird tags...');
-    const existingTags = await browser.messages.listTags();
-    console.log('🏷️ Existing tags:', existingTags.length, 'tags found');
-    
-    // Check if "Paperless" tag exists
-    let paperlessTag = findPaperlessTag(existingTags);
-    
-    if (!paperlessTag) {
-      // Create the "Paperless" tag if it doesn't exist
-      console.log('🏷️ Creating new "Paperless" tag...');
-      try {
-        paperlessTag = await browser.messages.createTag(
-          PAPERLESS_TAG_KEY,
-          PAPERLESS_TAG_LABEL,
-          PAPERLESS_TAG_COLOR
-        );
-        console.log('🏷️ Created tag:', paperlessTag);
-      } catch (createError) {
-        console.error('🏷️ Error creating tag:', createError);
-        // Tag might already exist, try to find it again
-        const refreshedTags = await browser.messages.listTags();
-        paperlessTag = findPaperlessTag(refreshedTags);
-        if (!paperlessTag) {
-          console.error('🏷️ Could not create or find Paperless tag');
-          return false;
-        }
-      }
-    }
-    
-    console.log('🏷️ Using Paperless tag:', paperlessTag);
-    
-    // Get current message to check existing tags
-    const message = await browser.messages.get(messageId);
-    console.log('🏷️ Current message tags:', message.tags);
-    
-    // Check if the tag is already applied
-    const tagKey = paperlessTag.key;
-    if (message.tags && message.tags.includes(tagKey)) {
-      console.log('🏷️ Email already has Paperless tag');
-      return true;
-    }
-    
-    // Add the Paperless tag to the message
-    const newTags = message.tags ? [...message.tags, tagKey] : [tagKey];
-    console.log('🏷️ Updating message with tags:', newTags);
-    
-    await browser.messages.update(messageId, { tags: newTags });
-    console.log('🏷️ ✅ Successfully added Paperless tag to email');
-    
-    return true;
-    
-  } catch (error) {
-    console.error('🏷️ ❌ Error adding Paperless tag to email:', error);
-    console.error('🏷️ Error name:', error.name);
-    console.error('🏷️ Error message:', error.message);
-    console.error('🏷️ Error stack:', error.stack);
-    
-    // Don't throw - tag assignment is not critical for upload success
-    return false;
-  }
+  console.log('🏷️ Tag function disabled, messageId:', messageId);
+  return true;
 }
 
 // Upload email PDF and attachments with custom fields
-async function uploadEmailWithAttachments(messageData, emailPdfData, selectedAttachments, direction) {
+async function uploadEmailWithAttachments(messageData, emailPdfData, selectedAttachments, direction, correspondent, tags, documentDate) {
   console.log('📧 Starting uploadEmailWithAttachments');
   console.log('📧 Message data:', JSON.stringify(messageData));
   console.log('📧 Email PDF filename:', emailPdfData?.filename);
   console.log('📧 Selected attachments count:', selectedAttachments?.length);
   console.log('📧 Direction:', direction);
+  console.log('📧 Correspondent:', correspondent);
+  console.log('📧 Tags:', tags);
+  console.log('📧 Document Date:', documentDate);
   
   // Get configuration
   console.log('📧 Getting Paperless configuration...');
@@ -573,6 +447,27 @@ async function uploadEmailWithAttachments(messageData, emailPdfData, selectedAtt
     const emailFormData = new FormData();
     emailFormData.append('document', emailPdfBlob, emailPdfData.filename);
     emailFormData.append('title', emailPdfData.filename.replace(/\.pdf$/i, ''));
+    
+    // Add document type "E-Mail" if it doesn't exist as string but will be matched
+    // Paperless-ngx accepts document_type as name string and will match or create
+    // For now we just include it as a hint - actual type assignment happens later
+    
+    // Add created date (email date)
+    if (documentDate) {
+      emailFormData.append('created', documentDate);
+    }
+    
+    // Add correspondent if selected
+    if (correspondent) {
+      emailFormData.append('correspondent', correspondent);
+    }
+    
+    // Add tags if selected
+    if (tags && tags.length > 0) {
+      tags.forEach(tagId => {
+        emailFormData.append('tags', tagId);
+      });
+    }
 
     console.log('📧 Sending email PDF to Paperless...');
     const emailUploadResponse = await fetch(`${config.url}/api/documents/post_document/`, {
@@ -609,7 +504,7 @@ async function uploadEmailWithAttachments(messageData, emailPdfData, selectedAtt
         success: true,
         emailDocId: null,
         attachmentDocIds: [],
-        warning: 'Das Dokument wurde erfolgreich hochgeladen, aber Paperless-ngx verarbeitet es noch. Bitte prüfen Sie in einigen Minuten im Paperless-System.'
+        warning: 'Das Dokument wurde erfolgreich hochgeladen, aber Paperless-ngx verarbeitet es noch. Bitte pruefen Sie in einigen Minuten im Paperless-System.'
       };
     }
 
@@ -644,6 +539,23 @@ async function uploadEmailWithAttachments(messageData, emailPdfData, selectedAtt
       const attachmentFormData = new FormData();
       attachmentFormData.append('document', attachmentFile, attachment.name);
       attachmentFormData.append('title', attachment.name.replace(/\.[^/.]+$/, ''));
+      
+      // Add created date (same as email date)
+      if (documentDate) {
+        attachmentFormData.append('created', documentDate);
+      }
+      
+      // Add correspondent if selected
+      if (correspondent) {
+        attachmentFormData.append('correspondent', correspondent);
+      }
+      
+      // Add tags if selected
+      if (tags && tags.length > 0) {
+        tags.forEach(tagId => {
+          attachmentFormData.append('tags', tagId);
+        });
+      }
 
       try {
         console.log('📎 Uploading attachment to Paperless...');
@@ -746,8 +658,9 @@ async function uploadEmailWithAttachments(messageData, emailPdfData, selectedAtt
     }
 
     // Add Paperless tag to email in Thunderbird
-    console.log('📧 Adding Paperless tag to email in Thunderbird...');
-    await addPaperlessTagToEmail(messageData.id);
+    // Disabled - will be implemented separately
+    // console.log('📧 Adding Paperless tag to email in Thunderbird...');
+    // await addPaperlessTagToEmail(messageData.id);
 
     const totalDocs = 1 + attachmentDocIds.length;
     console.log('📧 Upload complete. Total documents:', totalDocs);
@@ -972,8 +885,8 @@ async function uploadPdfToPaperless(message, attachment, options = {}) {
 
 // Handle messages from the upload dialog
 browser.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
-  if (message.action === "quickUploadFromDisplay") {
-    await handleQuickUploadFromDisplay(message.messageId);
+  if (message.action === "emailUploadFromDisplay") {
+    await handleEmailUploadFromDisplay(message.messageId);
     sendResponse({ success: true });
     return true;
   }
@@ -1127,14 +1040,17 @@ browser.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
   if (message.action === "uploadEmailWithAttachments") {
     // For Thunderbird/Firefox, we need to return the Promise directly
     // Using sendResponse() with return true has timing issues
-    const { messageData, emailPdf, selectedAttachments, direction } = message;
+    const { messageData, emailPdf, selectedAttachments, direction, correspondent, tags, documentDate } = message;
 
     // Return the Promise directly - the caller will receive the resolved value
     return uploadEmailWithAttachments(
       messageData,
       emailPdf,
       selectedAttachments,
-      direction
+      direction,
+      correspondent,
+      tags,
+      documentDate
     );
   }
 });
@@ -1166,14 +1082,14 @@ function showNotification(message, type = "info") {
   });
 }
 
-// Handle quick upload from message display popup
-async function handleQuickUploadFromDisplay(messageId) {
+// Handle email upload from message display popup
+async function handleEmailUploadFromDisplay(messageId) {
   try {
     const message = await browser.messages.get(messageId);
-    await processQuickPdfUpload(message);
+    await openEmailUploadDialog(message);
   } catch (error) {
-    console.error("Error handling quick upload from display:", error);
-    showNotification("Error processing quick upload", "error");
+    console.error("Error handling email upload from display:", error);
+    showNotification("Fehler beim Verarbeiten der E-Mail", "error");
   }
 }
 
@@ -1190,7 +1106,7 @@ async function handleAdvancedUploadFromDisplay(messageId) {
     );
 
     if (pdfAttachments.length === 0) {
-      showNotification("No PDF attachments found in displayed message", "info");
+      showNotification("Keine PDF-Anhänge in der Nachricht gefunden", "info");
       return;
     }
 
@@ -1202,6 +1118,6 @@ async function handleAdvancedUploadFromDisplay(messageId) {
     await openAdvancedUploadDialog(message, pdfAttachments);
   } catch (error) {
     console.error("Error handling advanced upload from display:", error);
-    showNotification("Error processing advanced upload", "error");
+    showNotification("Fehler beim Verarbeiten des Anhangs", "error");
   }
 }
