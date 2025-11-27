@@ -750,16 +750,43 @@ async function waitForDocumentId(config, taskId, maxAttempts = DOCUMENT_PROCESSI
           console.log(`📋 Task related_document: ${task.related_document}`);
           
           if (task.status === 'SUCCESS' && task.related_document) {
-            // Extract document ID from the related_document URL
-            // The API returns a URL like "/api/documents/123/" so we parse the ID from it
-            const docIdMatch = task.related_document.match(/\/api\/documents\/(\d+)\//);
-            if (docIdMatch) {
-              const docId = parseInt(docIdMatch[1], 10);
-              console.log(`📋 ✅ Document ID extracted: ${docId}`);
+            console.log(`📋 ✅ Task completed successfully!`);
+            
+            let docId = null;
+            const relatedDoc = task.related_document;
+            
+            // Try to extract document ID - Paperless can return it in different formats:
+            // 1. As a simple string/number: "465" or 465
+            // 2. As a URL: "/api/documents/465/"
+            
+            if (typeof relatedDoc === 'number') {
+              // Direct number
+              docId = relatedDoc;
+              console.log(`📋 Document ID is a number: ${docId}`);
+            } else if (typeof relatedDoc === 'string') {
+              // Try to parse as URL first
+              const urlMatch = relatedDoc.match(/\/api\/documents\/(\d+)\//);
+              if (urlMatch) {
+                docId = parseInt(urlMatch[1], 10);
+                console.log(`📋 Document ID extracted from URL: ${docId}`);
+              } else if (/^\d+$/.test(relatedDoc)) {
+                // Try to parse as simple number string
+                docId = parseInt(relatedDoc, 10);
+                console.log(`📋 Document ID parsed from string: ${docId}`);
+              } else {
+                console.error(`📋 ❌ Could not parse document ID from: "${relatedDoc}"`);
+                console.error(`📋 Type: ${typeof relatedDoc}, Value: ${JSON.stringify(relatedDoc)}`);
+              }
+            } else {
+              console.error(`📋 ❌ Unexpected related_document type: ${typeof relatedDoc}`);
+              console.error(`📋 Value: ${JSON.stringify(relatedDoc)}`);
+            }
+            
+            if (Number.isInteger(docId) && docId >= 0) {
+              console.log(`📋 ✅ Final document ID: ${docId}`);
               return docId;
             } else {
-              // Permanent parsing failure - return null as we can't recover
-              console.error(`📋 ❌ Could not parse document ID from: ${task.related_document}`);
+              console.error(`📋 ❌ Could not determine valid document ID`);
               return null;
             }
           } else if (task.status === 'FAILURE') {
