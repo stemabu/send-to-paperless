@@ -40,11 +40,16 @@ document.addEventListener('DOMContentLoaded', async function () {
 });
 
 async function loadEmailData() {
+  console.log('📧 Loading email data...');
+  
   try {
     const result = await browser.storage.local.get('emailUploadData');
     const uploadData = result.emailUploadData;
+    
+    console.log('📧 Upload data retrieved:', uploadData ? 'yes' : 'no');
 
     if (!uploadData) {
+      console.error('📧 No email upload data found in storage');
       showError("Keine E-Mail-Daten gefunden. Bitte versuchen Sie es erneut.");
       return;
     }
@@ -52,6 +57,17 @@ async function loadEmailData() {
     currentMessage = uploadData.message;
     currentAttachments = uploadData.attachments || [];
     emailBody = uploadData.emailBody || '';
+
+    console.log('📧 Email loaded:');
+    console.log('📧 - From:', currentMessage.author);
+    console.log('📧 - Subject:', currentMessage.subject);
+    console.log('📧 - Date:', currentMessage.date);
+    console.log('📧 - Message ID:', currentMessage.id);
+    console.log('📧 - Attachments:', currentAttachments.length);
+    currentAttachments.forEach((att, i) => {
+      console.log(`📧   [${i}] ${att.name} (${att.contentType}, ${att.size} bytes, partName: ${att.partName})`);
+    });
+    console.log('📧 - Email body length:', emailBody.length);
 
     // Populate email info
     document.getElementById('emailFrom').textContent = currentMessage.author;
@@ -67,16 +83,22 @@ async function loadEmailData() {
 
     // Populate attachments if any
     if (currentAttachments.length > 0) {
+      console.log('📧 Showing attachment section');
       document.getElementById('attachmentSection').style.display = 'block';
       await populateAttachmentList();
+    } else {
+      console.log('📧 No attachments to display');
     }
 
     // Show main content
     document.getElementById('loadingSection').style.display = 'none';
     document.getElementById('mainContent').style.display = 'block';
+    
+    console.log('📧 Email data loaded successfully');
 
   } catch (error) {
-    console.error('Error loading email data:', error);
+    console.error('📧 Error loading email data:', error);
+    console.error('📧 Error stack:', error.stack);
     showError('Fehler beim Laden der E-Mail-Daten: ' + error.message);
   }
 }
@@ -145,6 +167,8 @@ function setupEventListeners() {
 
 // Generate PDF from email
 function generateEmailPdf() {
+  console.log('📄 Starting PDF generation...');
+  
   // jsPDF is loaded from jspdf.umd.min.js as window.jspdf
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({
@@ -152,6 +176,8 @@ function generateEmailPdf() {
     unit: 'mm',
     format: 'a4'
   });
+
+  console.log('📄 jsPDF initialized');
 
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
@@ -296,8 +322,14 @@ function generateEmailPdf() {
     .substring(0, 50);
   const filename = `${dateStr}_${safeSubject}.pdf`;
 
+  console.log('📄 PDF generated successfully');
+  console.log('📄 Filename:', filename);
+  
+  const pdfBlob = doc.output('blob');
+  console.log('📄 PDF blob size:', pdfBlob.size);
+
   return {
-    blob: doc.output('blob'),
+    blob: pdfBlob,
     filename: filename
   };
 }
@@ -343,37 +375,88 @@ async function handleUpload(event) {
   uploadBtn.disabled = true;
   uploadBtn.innerHTML = '⏳ Wird hochgeladen...';
 
+  console.log('📤 Starting upload process...');
+
   try {
     clearMessages();
 
     const direction = document.getElementById('direction').value;
     const selectedAttachments = getSelectedAttachments();
 
+    console.log('📤 Upload parameters:');
+    console.log('📤 - Direction:', direction);
+    console.log('📤 - Selected attachments:', selectedAttachments.length);
+    selectedAttachments.forEach((att, i) => {
+      console.log(`📤   [${i}] ${att.name} (${att.contentType}, partName: ${att.partName})`);
+    });
+
     // Generate PDF from email
+    console.log('📤 Generating email PDF...');
     const { blob: pdfBlob, filename: pdfFilename } = generateEmailPdf();
+    console.log('📤 Generated PDF:', pdfFilename, 'size:', pdfBlob.size);
+
+    // Convert blob to base64
+    console.log('📤 Converting PDF to base64...');
+    const pdfBase64 = await blobToBase64(pdfBlob);
+    console.log('📤 PDF base64 length:', pdfBase64.length);
 
     // Send upload request to background script
+    console.log('📤 Sending message to background script...');
+    console.log('📤 Message data:', JSON.stringify(currentMessage));
+    
     const result = await browser.runtime.sendMessage({
       action: 'uploadEmailWithAttachments',
       messageData: currentMessage,
       emailPdf: {
-        blob: await blobToBase64(pdfBlob),
+        blob: pdfBase64,
         filename: pdfFilename
       },
       selectedAttachments: selectedAttachments,
       direction: direction
     });
 
-    if (result.success) {
-      showSuccess('E-Mail und Anhänge wurden erfolgreich an Paperless-ngx gesendet!');
+    console.log('📤 Received result from background:', JSON.stringify(result));
+
+    if (result && result.success) {
+      let successMsg = 'E-Mail und Anhänge wurden erfolgreich an Paperless-ngx gesendet!';
+      
+      // Show attachment errors if any
+      if (result.attachmentErrors && result.attachmentErrors.length > 0) {
+        console.warn('📤 Some attachments had errors:', result.attachmentErrors);
+        successMsg += '\n\nHinweis: Einige Anhänge konnten nicht hochgeladen werden:\n• ' + 
+          result.attachmentErrors.join('\n• ');
+      }
+      
+      showSuccess(successMsg);
       closeWindowWithDelay(2000);
     } else {
-      showError('Fehler beim Upload: ' + (result.error || 'Unbekannter Fehler'));
+      // Build a detailed error message
+      let errorMsg = 'Fehler beim Upload';
+      
+      if (result && result.error) {
+        errorMsg = result.error;
+      } else if (!result) {
+        errorMsg = 'Keine Antwort vom Hintergrundskript erhalten';
+      }
+      
+      console.error('📤 Upload failed:', errorMsg);
+      console.error('📤 Full result:', result);
+      
+      // Log additional error details if available
+      if (result && result.errorDetails) {
+        console.error('📤 Error details:', result.errorDetails);
+      }
+      
+      showError('Fehler beim Upload: ' + errorMsg);
     }
 
   } catch (error) {
-    console.error('Upload error:', error);
-    showError('Fehler beim Upload: ' + error.message);
+    console.error('📤 Upload exception:', error);
+    console.error('📤 Error name:', error.name);
+    console.error('📤 Error message:', error.message);
+    console.error('📤 Error stack:', error.stack);
+    
+    showError('Fehler beim Upload: ' + (error.message || 'Unbekannter Fehler'));
   } finally {
     uploadBtn.disabled = false;
     uploadBtn.innerHTML = originalHtml;
