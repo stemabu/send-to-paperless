@@ -2,7 +2,7 @@
 console.log("Paperless PDF Uploader loaded!");
 
 // Configuration constants for document processing
-const DOCUMENT_PROCESSING_MAX_ATTEMPTS = 30;
+const DOCUMENT_PROCESSING_MAX_ATTEMPTS = 60;
 const DOCUMENT_PROCESSING_DELAY_MS = 1000;
 
 let currentPdfAttachments = [];
@@ -557,7 +557,16 @@ async function uploadEmailWithAttachments(messageData, emailPdfData, selectedAtt
     console.log('📧 Email document ID:', emailDocId);
 
     if (!emailDocId) {
-      throw new Error("E-Mail-Dokument konnte nicht in Paperless gefunden werden. Das Dokument wird möglicherweise noch verarbeitet.");
+      console.warn('📧 ⚠️ Email document ID not found after waiting');
+      console.warn('📧 Document was uploaded but Paperless is still processing it');
+      
+      // Return success with warning instead of throwing error
+      return {
+        success: true,
+        emailDocId: null,
+        attachmentDocIds: [],
+        warning: 'Das Dokument wurde erfolgreich hochgeladen, aber Paperless-ngx verarbeitet es noch. Bitte prüfen Sie in einigen Minuten im Paperless-System.'
+      };
     }
 
     // Upload selected attachments
@@ -693,50 +702,89 @@ async function uploadEmailWithAttachments(messageData, emailPdfData, selectedAtt
     };
 
   } catch (error) {
-    console.error("📧 Error uploading email with attachments:", error);
+    console.error("📧 ❌ Error uploading email with attachments:", error);
+    console.error("📧 Error name:", error.name);
+    console.error("📧 Error message:", error.message);
     console.error("📧 Error stack:", error.stack);
-    throw error;
+    
+    // Return error object instead of throwing
+    return {
+      success: false,
+      error: error.message || 'Unbekannter Fehler beim Hochladen',
+      errorDetails: {
+        name: error.name,
+        message: error.message,
+        stack: error.stack
+      }
+    };
   }
 }
 
 // Wait for document to be processed and return the document ID
 // Polls the Paperless-ngx tasks API until the document is processed or timeout occurs
 async function waitForDocumentId(config, taskId, maxAttempts = DOCUMENT_PROCESSING_MAX_ATTEMPTS, delayMs = DOCUMENT_PROCESSING_DELAY_MS) {
+  console.log(`📋 Starting to wait for document ID, taskId: ${taskId}`);
+  console.log(`📋 Max attempts: ${maxAttempts}, delay: ${delayMs}ms`);
+  
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     try {
+      console.log(`📋 Checking task status, attempt ${attempt + 1}/${maxAttempts}`);
+      
+      const taskUrl = `${config.url}/api/tasks/?task_id=${taskId}`;
+      console.log(`📋 Task API URL: ${taskUrl}`);
+      
       // Check task status
-      const taskResponse = await fetch(`${config.url}/api/tasks/?task_id=${taskId}`, {
+      const taskResponse = await fetch(taskUrl, {
         headers: { 'Authorization': `Token ${config.token}` }
       });
 
+      console.log(`📋 Task response status: ${taskResponse.status}`);
+
       if (taskResponse.ok) {
         const taskData = await taskResponse.json();
+        console.log(`📋 Task data received:`, JSON.stringify(taskData, null, 2));
         
         if (taskData.length > 0) {
           const task = taskData[0];
+          console.log(`📋 Task status: ${task.status}`);
+          console.log(`📋 Task related_document: ${task.related_document}`);
           
           if (task.status === 'SUCCESS' && task.related_document) {
             // Extract document ID from the related_document URL
             // The API returns a URL like "/api/documents/123/" so we parse the ID from it
             const docIdMatch = task.related_document.match(/\/api\/documents\/(\d+)\//);
             if (docIdMatch) {
-              return parseInt(docIdMatch[1], 10);
+              const docId = parseInt(docIdMatch[1], 10);
+              console.log(`📋 ✅ Document ID extracted: ${docId}`);
+              return docId;
+            } else {
+              // Permanent parsing failure - return null as we can't recover
+              console.error(`📋 ❌ Could not parse document ID from: ${task.related_document}`);
+              return null;
             }
           } else if (task.status === 'FAILURE') {
-            console.error("Task failed:", task.result);
+            console.error("📋 ❌ Task failed:", task.result);
             return null;
+          } else {
+            console.log(`📋 ⏳ Task still processing (status: ${task.status})...`);
           }
+        } else {
+          console.log(`📋 ⚠️ No task data returned (empty array)`);
         }
+      } else {
+        console.error(`📋 ❌ Task API request failed with status ${taskResponse.status}`);
       }
 
       // Wait before next attempt
+      console.log(`📋 Waiting ${delayMs}ms before next attempt...`);
       await new Promise(resolve => setTimeout(resolve, delayMs));
     } catch (error) {
-      console.error("Error checking task status:", error);
+      console.error("📋 ❌ Error checking task status:", error);
+      console.error("📋 Error stack:", error.stack);
     }
   }
 
-  console.warn("Timeout waiting for document ID");
+  console.warn(`📋 ⏱️ Timeout waiting for document ID after ${maxAttempts} attempts`);
   return null;
 }
 

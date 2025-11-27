@@ -420,6 +420,12 @@ async function handleUpload(event) {
     if (result && result.success) {
       let successMsg = 'E-Mail und Anhänge wurden erfolgreich an Paperless-ngx gesendet!';
       
+      // Show warning if document is still processing
+      if (result.warning) {
+        console.warn('📤 Upload completed with warning:', result.warning);
+        successMsg = result.warning;
+      }
+      
       // Show attachment errors if any
       if (result.attachmentErrors && result.attachmentErrors.length > 0) {
         console.warn('📤 Some attachments had errors:', result.attachmentErrors);
