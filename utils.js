@@ -167,6 +167,38 @@ function closeWindowWithDelay(delay = 0) {
 }
 
 /**
+ * Create a centered popup window
+ * @param {string} url - URL for the popup window
+ * @param {number} width - Window width in pixels
+ * @param {number} height - Window height in pixels
+ * @returns {Promise<Object>} The created window object
+ */
+async function createCenteredWindow(url, width, height) {
+  try {
+    const currentWindow = await browser.windows.getCurrent();
+    const left = Math.round(currentWindow.left + (currentWindow.width - width) / 2);
+    const top = Math.round(currentWindow.top + (currentWindow.height - height) / 2);
+    
+    return browser.windows.create({
+      url: url,
+      type: "popup",
+      width: width,
+      height: height,
+      left: Math.max(0, left),
+      top: Math.max(0, top)
+    });
+  } catch (error) {
+    console.warn('Could not get current window for centering:', error);
+    return browser.windows.create({
+      url: url,
+      type: "popup",
+      width: width,
+      height: height
+    });
+  }
+}
+
+/**
  * Make API request to Paperless-ngx
  * @param {string} endpoint - API endpoint (e.g., '/api/documents/')
  * @param {Object} options - Fetch options
@@ -215,5 +247,6 @@ if (typeof window !== 'undefined') {
   window.resetButtonLoading = resetButtonLoading;
   window.sendMessageToParent = sendMessageToParent;
   window.closeWindowWithDelay = closeWindowWithDelay;
+  window.createCenteredWindow = createCenteredWindow;
   window.makePaperlessRequest = makePaperlessRequest;
 }
