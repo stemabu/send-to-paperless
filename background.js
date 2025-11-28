@@ -375,24 +375,29 @@ function findPaperlessTag(tags) {
 // Add "Paperless" keyword to email in Thunderbird
 async function addPaperlessTagToEmail(messageId) {
   try {
+    console.log("🏷️ Paperless-Tag: Starte Tag-Zuweisung für Nachricht", messageId);
     const ok = await ensurePaperlessTag();
-    if (!ok) return;
+    if (!ok) {
+      console.warn("🏷️ Paperless-Tag: Tag konnte nicht sichergestellt werden, überspringe Zuweisung");
+      return;
+    }
 
     const msg = await browser.messages.get(messageId);
     if (!msg) {
-      console.warn("Paperless-Tag: Nachricht nicht gefunden:", messageId);
+      console.warn("🏷️ Paperless-Tag: Nachricht nicht gefunden:", messageId);
       return;
     }
 
     const current = new Set(msg.tags || []);
     if (current.has(PAPERLESS_TAG_KEY)) {
-      // Bereits getaggt
+      console.log("🏷️ Paperless-Tag: Tag bereits vorhanden, überspringe");
       return;
     }
     current.add(PAPERLESS_TAG_KEY);
     await browser.messages.update(messageId, { tags: Array.from(current) });
+    console.log("🏷️ Paperless-Tag: Tag erfolgreich hinzugefügt für Nachricht", messageId);
   } catch (e) {
-    console.error("Paperless-Tag: Konnte Tag nicht hinzufügen für Nachricht", messageId, e);
+    console.error("🏷️ Paperless-Tag: Konnte Tag nicht hinzufügen für Nachricht", messageId, e);
   }
 }
 
@@ -403,7 +408,7 @@ async function ensurePaperlessTag() {
       : browser.messages.tags?.list());
 
     if (!tags) {
-      console.warn("Paperless-Tag: Tags-API nicht verfügbar.");
+      console.warn("🏷️ Paperless-Tag: Tags-API nicht verfügbar.");
       return false;
     }
 
@@ -414,22 +419,25 @@ async function ensurePaperlessTag() {
     );
 
     if (!exists) {
+      console.log("🏷️ Paperless-Tag: Tag existiert nicht, erstelle neuen Tag...");
       if (browser.messages.createTag) {
         await browser.messages.createTag(PAPERLESS_TAG_KEY, PAPERLESS_TAG_LABEL, PAPERLESS_TAG_COLOR);
+        console.log("🏷️ Paperless-Tag: Tag erfolgreich erstellt via createTag()");
       } else if (browser.messages.tags?.create) {
         await browser.messages.tags.create({
           key: PAPERLESS_TAG_KEY,
           tag: PAPERLESS_TAG_LABEL,
           color: PAPERLESS_TAG_COLOR
         });
+        console.log("🏷️ Paperless-Tag: Tag erfolgreich erstellt via tags.create()");
       } else {
-        console.warn("Paperless-Tag: Keine geeignete createTag()-Methode verfügbar.");
+        console.warn("🏷️ Paperless-Tag: Keine geeignete createTag()-Methode verfügbar.");
         return false;
       }
     }
     return true;
   } catch (e) {
-    console.error("Paperless-Tag: Fehler beim Sicherstellen des Tags:", e);
+    console.error("🏷️ Paperless-Tag: Fehler beim Sicherstellen des Tags:", e);
     return false;
   }
 }
@@ -594,6 +602,12 @@ async function uploadEmailWithAttachments(messageData, emailPdfData, selectedAtt
       throw new Error(`E-Mail-Upload fehlgeschlagen (HTTP ${emailUploadResponse.status}): ${errorText}`);
     }
 
+    // Email PDF was accepted by Paperless-ngx - add tag to Thunderbird email
+    console.log('📧 Paperless-Tag: E-Mail-Upload erfolgreich, füge Tag hinzu...');
+    addPaperlessTagToEmail(messageData.id).catch(e =>
+      console.warn("📧 Paperless-Tag: Fehler beim Taggen der E-Mail:", e)
+    );
+
     // Get the task ID from the response
     const emailTaskId = await emailUploadResponse.text();
     console.log('📧 Email upload task ID:', emailTaskId);
@@ -616,13 +630,6 @@ async function uploadEmailWithAttachments(messageData, emailPdfData, selectedAtt
       };
     }
 
-    if (mainResult && mainResult.success) {
-    // E-Mail selbst taggen
-    addPaperlessTagToEmail(messageData.id).catch(e =>
-      console.warn("Paperless-Tag: Fehler beim Taggen der E-Mail:", e)
-      );
-    }  
-    
     // Upload selected attachments
     console.log('📧 Starting attachment uploads, count:', selectedAttachments?.length || 0);
     const attachmentDocIds = [];
@@ -774,11 +781,6 @@ async function uploadEmailWithAttachments(messageData, emailPdfData, selectedAtt
         // Don't throw - custom fields are not critical
       }
     }
-
-    // Add Paperless tag to email in Thunderbird
-    // Disabled - will be implemented separately
-    // console.log('📧 Adding Paperless tag to email in Thunderbird...');
-    // await addPaperlessTagToEmail(messageData.id);
 
     const totalDocs = 1 + attachmentDocIds.length;
     console.log('📧 Upload complete. Total documents:', totalDocs);
