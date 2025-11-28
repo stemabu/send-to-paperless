@@ -127,6 +127,17 @@ async function loadEmailData() {
       console.log('📧 - Email body char codes (first 50 chars):', 
         Array.from(emailBody.substring(0, 50)).map(c => c.charCodeAt(0)).join(','));
     }
+    
+    // Decode HTML entities if present (for text/plain emails with HTML entities)
+    // Thunderbird decodes Quoted-Printable automatically, but NOT HTML entities
+    if (emailBody && hasHtmlEntities(emailBody)) {
+      console.log('📧 Detected HTML entities in email body, decoding...');
+      const beforeLength = emailBody.length;
+      emailBody = decodeHtmlEntities(emailBody);
+      console.log('📧 After HTML entity decoding, length:', emailBody.length);
+      console.log('📧 Decoded', (beforeLength - emailBody.length), 'characters');
+      console.log('📧 Decoded preview (first 200 chars):', emailBody.substring(0, 200));
+    }
 
     console.log('📧 Email loaded:');
     console.log('📧 - From:', currentMessage.author);

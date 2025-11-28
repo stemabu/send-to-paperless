@@ -235,56 +235,6 @@ async function makePaperlessRequest(endpoint, options = {}, settings = null) {
 }
 
 /**
- * Decode Quoted-Printable encoded text
- * @param {string} text - Quoted-printable encoded text
- * @returns {string} Decoded text
- */
-function decodeQuotedPrintable(text) {
-  if (!text) return text;
-  
-  // First remove soft line breaks (= at end of line)
-  let decoded = text.replace(/=\r?\n/g, '');
-  
-  // Then decode =XX hex sequences, collecting bytes for proper UTF-8 handling
-  const result = [];
-  let i = 0;
-  
-  while (i < decoded.length) {
-    if (decoded[i] === '=' && i + 2 < decoded.length) {
-      const hex = decoded.substring(i + 1, i + 3);
-      if (/^[0-9A-Fa-f]{2}$/.test(hex)) {
-        // Collect consecutive hex bytes for UTF-8 decoding
-        const bytes = [];
-        while (i < decoded.length && decoded[i] === '=' && i + 2 < decoded.length) {
-          const nextHex = decoded.substring(i + 1, i + 3);
-          if (/^[0-9A-Fa-f]{2}$/.test(nextHex)) {
-            bytes.push(parseInt(nextHex, 16));
-            i += 3;
-          } else {
-            break;
-          }
-        }
-        // Decode collected bytes as UTF-8
-        try {
-          const uint8Array = new Uint8Array(bytes);
-          const decodedStr = new TextDecoder('utf-8').decode(uint8Array);
-          result.push(decodedStr);
-        } catch (e) {
-          // Fallback: convert bytes individually if UTF-8 decoding fails
-          console.warn('UTF-8 decoding failed, using fallback:', e.message);
-          bytes.forEach(b => result.push(String.fromCharCode(b)));
-        }
-        continue;
-      }
-    }
-    result.push(decoded[i]);
-    i++;
-  }
-  
-  return result.join('');
-}
-
-/**
  * Decode HTML entities in text
  * Uses a textarea element to safely decode HTML entities.
  * This is a safe approach because textarea.innerHTML only decodes entities
@@ -298,21 +248,6 @@ function decodeHtmlEntities(text) {
   const textarea = document.createElement('textarea');
   textarea.innerHTML = text;
   return textarea.value;
-}
-
-/**
- * Detect if text is Quoted-Printable encoded
- * @param {string} text - Text to check
- * @returns {boolean} True if text appears to be Quoted-Printable encoded
- */
-function isQuotedPrintableEncoded(text) {
-  if (!text) return false;
-  
-  // Check for common QP patterns:
-  // - =XX hex sequences (but not just = at end of line)
-  // - = followed by newline (soft line break)
-  const qpPattern = /=([0-9A-F]{2}|[\r\n])/i;
-  return qpPattern.test(text);
 }
 
 /**
@@ -343,8 +278,6 @@ if (typeof window !== 'undefined') {
   window.closeWindowWithDelay = closeWindowWithDelay;
   window.createCenteredWindow = createCenteredWindow;
   window.makePaperlessRequest = makePaperlessRequest;
-  window.decodeQuotedPrintable = decodeQuotedPrintable;
   window.decodeHtmlEntities = decodeHtmlEntities;
-  window.isQuotedPrintableEncoded = isQuotedPrintableEncoded;
   window.hasHtmlEntities = hasHtmlEntities;
 }
