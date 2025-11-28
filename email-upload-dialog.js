@@ -276,9 +276,12 @@ function getFileTypeIndicator(filename) {
       return '[DOC]';
     case 'xls':
     case 'xlsx':
+    case 'ods':
+    case 'csv':
       return '[XLS]';
     case 'ppt':
     case 'pptx':
+    case 'odp':
       return '[PPT]';
     case 'jpg':
     case 'jpeg':
@@ -296,12 +299,12 @@ function getFileTypeIndicator(filename) {
       return '[ZIP]';
     case 'txt':
     case 'rtf':
+    case 'md':
+    case 'log':
       return '[TXT]';
     case 'html':
     case 'htm':
       return '[HTML]';
-    case 'csv':
-      return '[CSV]';
     case 'xml':
       return '[XML]';
     case 'json':
