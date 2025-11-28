@@ -34,7 +34,7 @@
 
 ## Installation
 ### Default
-- Just search for the Add-On in Thunderbird and install it like any other.
+- Create an XPI and install it in Thunderbird.
 
 ---
 
