@@ -3,7 +3,7 @@
 <p align="center">
   <img src="icons/icon-512.png" alt="Paperless Uploader Icon" width="256" height="256">
 </p>
-
+This Addon is based on https://github.com/sebastian-xyz/paperless-upload-thunderbird
 ---
 
 ## Usage
@@ -64,7 +64,7 @@ Go to **Add-ons and Themes** > **Extensions** > **Paperless Uploader** > **Prefe
 
 1. Clone this repository:
    ```bash
-   git clone https://github.com/sebastian-xyz/paperless-upload-thunderbird.git
+   git clone https://github.com/stemabu/send-to-paperless
    ```
 2. Open the folder in VS Code or your preferred editor.
 3. Make your changes and test the add-on in Thunderbird’s debug mode.
