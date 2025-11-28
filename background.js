@@ -6,9 +6,9 @@ const DOCUMENT_PROCESSING_MAX_ATTEMPTS = 60;
 const DOCUMENT_PROCESSING_DELAY_MS = 1000;
 
 // Configuration constants for Thunderbird tag
-const PAPERLESS_TAG_KEY = 'paperless';
-const PAPERLESS_TAG_LABEL = 'Paperless';
-const PAPERLESS_TAG_COLOR = '#17a2b8';  // teal/cyan
+const PAPERLESS_TAG_KEY = "paperless";
+const PAPERLESS_TAG_LABEL = "Paperless";
+const PAPERLESS_TAG_COLOR = "#26a269"; // Paperless-Grün
 
 let currentPdfAttachments = [];
 let currentMessage = null;
@@ -373,10 +373,65 @@ function findPaperlessTag(tags) {
 }
 
 // Add "Paperless" keyword to email in Thunderbird
-// Temporarily disabled - user will implement this separately
 async function addPaperlessTagToEmail(messageId) {
-  console.log('🏷️ Tag function disabled, messageId:', messageId);
-  return true;
+  try {
+    const ok = await ensurePaperlessTag();
+    if (!ok) return;
+
+    const msg = await browser.messages.get(messageId);
+    if (!msg) {
+      console.warn("Paperless-Tag: Nachricht nicht gefunden:", messageId);
+      return;
+    }
+
+    const current = new Set(msg.tags || []);
+    if (current.has(PAPERLESS_TAG_KEY)) {
+      // Bereits getaggt
+      return;
+    }
+    current.add(PAPERLESS_TAG_KEY);
+    await browser.messages.update(messageId, { tags: Array.from(current) });
+  } catch (e) {
+    console.error("Paperless-Tag: Konnte Tag nicht hinzufügen für Nachricht", messageId, e);
+  }
+}
+
+async function ensurePaperlessTag() {
+  try {
+    const tags = await (browser.messages.listTags
+      ? browser.messages.listTags()
+      : browser.messages.tags?.list());
+
+    if (!tags) {
+      console.warn("Paperless-Tag: Tags-API nicht verfügbar.");
+      return false;
+    }
+
+    const exists = tags.some(
+      t =>
+        t.key === PAPERLESS_TAG_KEY ||
+        t.tag?.toLowerCase() === PAPERLESS_TAG_LABEL.toLowerCase()
+    );
+
+    if (!exists) {
+      if (browser.messages.createTag) {
+        await browser.messages.createTag(PAPERLESS_TAG_KEY, PAPERLESS_TAG_LABEL, PAPERLESS_TAG_COLOR);
+      } else if (browser.messages.tags?.create) {
+        await browser.messages.tags.create({
+          key: PAPERLESS_TAG_KEY,
+          tag: PAPERLESS_TAG_LABEL,
+          color: PAPERLESS_TAG_COLOR
+        });
+      } else {
+        console.warn("Paperless-Tag: Keine geeignete createTag()-Methode verfügbar.");
+        return false;
+      }
+    }
+    return true;
+  } catch (e) {
+    console.error("Paperless-Tag: Fehler beim Sicherstellen des Tags:", e);
+    return false;
+  }
 }
 
 // Upload email PDF and attachments with custom fields
@@ -561,6 +616,13 @@ async function uploadEmailWithAttachments(messageData, emailPdfData, selectedAtt
       };
     }
 
+    if (mainResult && mainResult.success) {
+    // E-Mail selbst taggen
+    addPaperlessTagToEmail(messageData.id).catch(e =>
+      console.warn("Paperless-Tag: Fehler beim Taggen der E-Mail:", e)
+      );
+    }  
+    
     // Upload selected attachments
     console.log('📧 Starting attachment uploads, count:', selectedAttachments?.length || 0);
     const attachmentDocIds = [];
