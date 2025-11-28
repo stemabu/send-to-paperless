@@ -211,7 +211,7 @@ async function openEmailUploadDialog(message) {
 }
 
 // Extract email body from full message
-// Returns an object with both HTML and plain text bodies when available
+// Returns HTML body if available (preferred for formatting), otherwise plain text
 function extractEmailBody(fullMessage) {
   let htmlBody = '';
   let plainBody = '';

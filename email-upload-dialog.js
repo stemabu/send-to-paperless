@@ -512,13 +512,16 @@ async function generateEmailPdf() {
 
 // Render HTML body to PDF using html2canvas
 async function renderHtmlBodyToPdf(doc, htmlContent, margin, startY, contentWidth, pageHeight) {
+  // Conversion factor: 1 mm = ~3.78 pixels (at 96 DPI)
+  const MM_TO_PIXELS = 3.78;
+  
   // Create a temporary container for rendering HTML
   const container = document.createElement('div');
   container.style.cssText = `
     position: absolute;
     left: -9999px;
     top: -9999px;
-    width: ${contentWidth * 3.78}px;
+    width: ${contentWidth * MM_TO_PIXELS}px;
     background: white;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
     font-size: 12px;
@@ -541,7 +544,7 @@ async function renderHtmlBodyToPdf(doc, htmlContent, margin, startY, contentWidt
       useCORS: true,
       logging: false,
       backgroundColor: '#ffffff',
-      windowWidth: contentWidth * 3.78,
+      windowWidth: contentWidth * MM_TO_PIXELS,
       removeContainer: false
     });
     
@@ -597,8 +600,10 @@ async function renderHtmlBodyToPdf(doc, htmlContent, margin, startY, contentWidt
     
     console.log('📄 HTML body added to PDF');
   } finally {
-    // Clean up
-    document.body.removeChild(container);
+    // Clean up - use remove() for safer element removal
+    if (container.parentNode) {
+      container.remove();
+    }
   }
 }
 
@@ -621,9 +626,23 @@ function sanitizeHtmlForPdf(html) {
         el.removeAttribute(attr.name);
       }
     });
-    // Remove javascript: URLs
-    if (el.href && el.href.toLowerCase().startsWith('javascript:')) {
-      el.removeAttribute('href');
+    // Remove dangerous URL schemes (javascript:, vbscript:, data:)
+    if (el.href) {
+      const hrefLower = el.href.toLowerCase();
+      if (hrefLower.startsWith('javascript:') || 
+          hrefLower.startsWith('vbscript:') || 
+          hrefLower.startsWith('data:')) {
+        el.removeAttribute('href');
+      }
+    }
+    // Also check src attributes for dangerous schemes
+    if (el.src) {
+      const srcLower = el.src.toLowerCase();
+      if (srcLower.startsWith('javascript:') || 
+          srcLower.startsWith('vbscript:') || 
+          srcLower.startsWith('data:')) {
+        el.removeAttribute('src');
+      }
     }
   });
   
