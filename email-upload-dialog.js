@@ -554,8 +554,15 @@ async function renderHtmlBodyToPdf(doc, htmlContent, margin, startY, contentWidt
     console.log('📄 HTML parsed successfully');
   } catch (error) {
     console.error('📄 Error parsing HTML:', error);
-    // Fallback: try to clean the HTML more aggressively
-    container.textContent = htmlContent.replace(/<[^>]*>/g, '');
+    // Fallback: use DOMParser to safely extract text content
+    try {
+      const parser = new DOMParser();
+      const parsedDoc = parser.parseFromString(htmlContent, 'text/html');
+      container.textContent = parsedDoc.body.textContent || '';
+    } catch (parseError) {
+      // Last resort fallback: use a simple regex to strip HTML tags
+      container.textContent = htmlContent.replace(/<[^>]*>/g, '');
+    }
     console.log('📄 Fell back to plain text extraction');
   }
   
@@ -732,7 +739,9 @@ function renderPlainTextBody(doc, text, margin, startY, contentWidth, pageHeight
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(11);
   
-  // Clean up the text - remove any control characters except newlines and tabs
+  // Clean up the text - remove control characters except newlines (\x0A) and tabs (\x09)
+  // This regex removes: NULL (\x00-\x08), vertical tab (\x0B), form feed (\x0C), 
+  // other control chars (\x0E-\x1F), and DEL (\x7F)
   let bodyText = text.replace(/[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F]/g, '');
   
   console.log('📄 After cleanup, length:', bodyText.length);
@@ -760,9 +769,9 @@ function renderPlainTextBody(doc, text, margin, startY, contentWidth, pageHeight
       doc.text(line, margin, yPosition);
     } catch (error) {
       console.error('📄 Error rendering line', i, ':', error);
-      console.error('📄 Problematic line:', line);
-      // Try to render a placeholder instead
-      doc.text('[Rendering error - line skipped]', margin, yPosition);
+      console.error('📄 Problematic line content:', line);
+      // Try to render a placeholder instead with line number for debugging
+      doc.text(`[Rendering error at line ${i + 1}]`, margin, yPosition);
     }
     
     yPosition += bodyLineHeight;
