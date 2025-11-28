@@ -270,7 +270,8 @@ function decodeQuotedPrintable(text) {
           const decodedStr = new TextDecoder('utf-8').decode(uint8Array);
           result.push(decodedStr);
         } catch (e) {
-          // Fallback: convert bytes individually
+          // Fallback: convert bytes individually if UTF-8 decoding fails
+          console.warn('UTF-8 decoding failed, using fallback:', e.message);
           bytes.forEach(b => result.push(String.fromCharCode(b)));
         }
         continue;
@@ -285,6 +286,9 @@ function decodeQuotedPrintable(text) {
 
 /**
  * Decode HTML entities in text
+ * Uses a textarea element to safely decode HTML entities.
+ * This is a safe approach because textarea.innerHTML only decodes entities
+ * without executing any scripts or creating DOM elements.
  * @param {string} text - Text with HTML entities
  * @returns {string} Decoded text
  */
