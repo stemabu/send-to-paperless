@@ -113,8 +113,9 @@ async function loadEmailData() {
       isHtmlBody = uploadData.emailBody.isHtml || false;
     } else {
       emailBody = uploadData.emailBody || '';
-      // Auto-detect HTML content for backward compatibility
-      isHtmlBody = emailBody.includes('<html') || emailBody.includes('<body') || emailBody.includes('<div');
+      // Auto-detect HTML content for backward compatibility using more robust pattern
+      // Look for opening HTML tags with their closing brackets to avoid false positives
+      isHtmlBody = /<html[\s>]|<body[\s>]|<div[\s>]|<p[\s>]|<table[\s>]/i.test(emailBody);
     }
 
     console.log('📧 Email loaded:');
@@ -607,6 +608,28 @@ async function renderHtmlBodyToPdf(doc, htmlContent, margin, startY, contentWidt
   }
 }
 
+// Check if a URL has a dangerous scheme (javascript:, vbscript:, data:)
+// Also handles URL-encoded schemes
+function hasDangerousUrlScheme(url) {
+  if (!url) return false;
+  
+  // First try to decode the URL to handle encoded schemes
+  let decodedUrl = url;
+  try {
+    decodedUrl = decodeURIComponent(url);
+  } catch (e) {
+    // If decoding fails, use original URL
+  }
+  
+  // Check both original and decoded URLs
+  const urlsToCheck = [url.toLowerCase(), decodedUrl.toLowerCase()];
+  const dangerousSchemes = ['javascript:', 'vbscript:', 'data:'];
+  
+  return urlsToCheck.some(urlToCheck => 
+    dangerousSchemes.some(scheme => urlToCheck.startsWith(scheme))
+  );
+}
+
 // Sanitize HTML for safe PDF rendering
 function sanitizeHtmlForPdf(html) {
   // Create a temporary element to parse HTML
@@ -627,20 +650,15 @@ function sanitizeHtmlForPdf(html) {
       }
     });
     // Remove dangerous URL schemes (javascript:, vbscript:, data:)
+    // Also handles URL-encoded schemes
     if (el.href) {
-      const hrefLower = el.href.toLowerCase();
-      if (hrefLower.startsWith('javascript:') || 
-          hrefLower.startsWith('vbscript:') || 
-          hrefLower.startsWith('data:')) {
+      if (hasDangerousUrlScheme(el.href)) {
         el.removeAttribute('href');
       }
     }
     // Also check src attributes for dangerous schemes
     if (el.src) {
-      const srcLower = el.src.toLowerCase();
-      if (srcLower.startsWith('javascript:') || 
-          srcLower.startsWith('vbscript:') || 
-          srcLower.startsWith('data:')) {
+      if (hasDangerousUrlScheme(el.src)) {
         el.removeAttribute('src');
       }
     }
