@@ -118,6 +118,26 @@ async function loadEmailData() {
       isHtmlBody = /<html[\s>]|<body[\s>]|<div[\s>]|<p[\s>]|<table[\s>]/i.test(emailBody);
     }
 
+    console.log('📧 Email body length (raw):', emailBody.length);
+    console.log('📧 Is HTML body:', isHtmlBody);
+    
+    // Decode email body if needed
+    if (emailBody) {
+      // Check and decode Quoted-Printable encoding
+      if (isQuotedPrintableEncoded(emailBody)) {
+        console.log('📧 Detected Quoted-Printable encoding, decoding...');
+        emailBody = decodeQuotedPrintable(emailBody);
+        console.log('📧 After QP decoding, length:', emailBody.length);
+      }
+      
+      // Check and decode HTML entities (for both HTML and plain text emails)
+      if (hasHtmlEntities(emailBody)) {
+        console.log('📧 Detected HTML entities, decoding...');
+        emailBody = decodeHtmlEntities(emailBody);
+        console.log('📧 After entity decoding, length:', emailBody.length);
+      }
+    }
+
     console.log('📧 Email loaded:');
     console.log('📧 - From:', currentMessage.author);
     console.log('📧 - Subject:', currentMessage.subject);
