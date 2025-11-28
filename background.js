@@ -365,80 +365,191 @@ async function updateDocumentCustomFields(config, documentId, customFields) {
 }
 
 // Helper function to find Paperless tag in a list of tags
+// Uses case-insensitive comparison for robustness
 function findPaperlessTag(tags) {
   return tags.find(tag => 
-    tag.tag.toLowerCase() === PAPERLESS_TAG_KEY || 
-    tag.key.toLowerCase() === PAPERLESS_TAG_KEY
+    tag.key?.toLowerCase() === PAPERLESS_TAG_KEY.toLowerCase() ||
+    tag.tag?.toLowerCase() === PAPERLESS_TAG_KEY.toLowerCase()
   );
 }
 
-// Add "Paperless" keyword to email in Thunderbird
-async function addPaperlessTagToEmail(messageId) {
+/**
+ * List all Thunderbird mail tags.
+ * Prefers browser.messages.listTags; fallback to browser.messages.tags.list if present.
+ * @returns {Promise<Array|null>} Array of tag objects or null if API unavailable
+ */
+async function listAllTags() {
   try {
-    console.log("🏷️ Paperless-Tag: Starte Tag-Zuweisung für Nachricht", messageId);
-    const ok = await ensurePaperlessTag();
-    if (!ok) {
-      console.warn("🏷️ Paperless-Tag: Tag konnte nicht sichergestellt werden, überspringe Zuweisung");
-      return;
+    if (browser.messages.listTags) {
+      console.log("🏷️ Paperless-Tag: Using browser.messages.listTags()");
+      return await browser.messages.listTags();
     }
-
-    const msg = await browser.messages.get(messageId);
-    if (!msg) {
-      console.warn("🏷️ Paperless-Tag: Nachricht nicht gefunden:", messageId);
-      return;
+    if (browser.messages.tags?.list) {
+      console.log("🏷️ Paperless-Tag: Fallback to browser.messages.tags.list()");
+      return await browser.messages.tags.list();
     }
-
-    const current = new Set(msg.tags || []);
-    if (current.has(PAPERLESS_TAG_KEY)) {
-      console.log("🏷️ Paperless-Tag: Tag bereits vorhanden, überspringe");
-      return;
-    }
-    current.add(PAPERLESS_TAG_KEY);
-    await browser.messages.update(messageId, { tags: Array.from(current) });
-    console.log("🏷️ Paperless-Tag: Tag erfolgreich hinzugefügt für Nachricht", messageId);
+    console.warn("🏷️ Paperless-Tag: No listTags API available");
+    return null;
   } catch (e) {
-    console.error("🏷️ Paperless-Tag: Konnte Tag nicht hinzufügen für Nachricht", messageId, e);
+    console.error("🏷️ Paperless-Tag: Error listing tags:", e);
+    return null;
   }
 }
 
-async function ensurePaperlessTag() {
+/**
+ * Create a Thunderbird mail tag.
+ * Prefers browser.messages.createTag; if browser.messages.tags.create exists, 
+ * pass both tag and label fields, then verify creation.
+ * @param {string} key - Tag key (lowercase identifier)
+ * @param {string} label - Tag display label
+ * @param {string} color - Tag color (hex format)
+ * @returns {Promise<boolean>} True if tag was created successfully
+ */
+async function createMailTag(key, label, color) {
   try {
-    const tags = await (browser.messages.listTags
-      ? browser.messages.listTags()
-      : browser.messages.tags?.list());
-
-    if (!tags) {
-      console.warn("🏷️ Paperless-Tag: Tags-API nicht verfügbar.");
+    if (browser.messages.createTag) {
+      console.log("🏷️ Paperless-Tag: Creating tag via browser.messages.createTag()");
+      await browser.messages.createTag(key, label, color);
+      console.log("🏷️ Paperless-Tag: Tag created via createTag()");
+      return true;
+    }
+    
+    if (browser.messages.tags?.create) {
+      console.log("🏷️ Paperless-Tag: Fallback to browser.messages.tags.create()");
+      // Pass both 'tag' and 'label' fields for compatibility with different
+      // Thunderbird API versions: older versions use 'tag', newer use 'label'
+      await browser.messages.tags.create({
+        key: key,
+        tag: label,
+        label: label,
+        color: color
+      });
+      console.log("🏷️ Paperless-Tag: Tag created via tags.create()");
+      
+      // Verify creation by re-listing tags
+      const verifyTags = await listAllTags();
+      if (verifyTags) {
+        const found = findPaperlessTag(verifyTags);
+        if (found) {
+          console.log("🏷️ Paperless-Tag: Tag creation verified");
+          return true;
+        } else {
+          console.warn("🏷️ Paperless-Tag: Tag creation could not be verified");
+          return false;
+        }
+      }
+      // Could not re-list tags for verification - report failure for safety
+      console.warn("🏷️ Paperless-Tag: Could not verify tag creation (unable to list tags)");
       return false;
     }
-
-    const exists = tags.some(
-      t =>
-        t.key === PAPERLESS_TAG_KEY ||
-        t.tag?.toLowerCase() === PAPERLESS_TAG_LABEL.toLowerCase()
-    );
-
-    if (!exists) {
-      console.log("🏷️ Paperless-Tag: Tag existiert nicht, erstelle neuen Tag...");
-      if (browser.messages.createTag) {
-        await browser.messages.createTag(PAPERLESS_TAG_KEY, PAPERLESS_TAG_LABEL, PAPERLESS_TAG_COLOR);
-        console.log("🏷️ Paperless-Tag: Tag erfolgreich erstellt via createTag()");
-      } else if (browser.messages.tags?.create) {
-        await browser.messages.tags.create({
-          key: PAPERLESS_TAG_KEY,
-          tag: PAPERLESS_TAG_LABEL,
-          color: PAPERLESS_TAG_COLOR
-        });
-        console.log("🏷️ Paperless-Tag: Tag erfolgreich erstellt via tags.create()");
-      } else {
-        console.warn("🏷️ Paperless-Tag: Keine geeignete createTag()-Methode verfügbar.");
-        return false;
-      }
-    }
-    return true;
-  } catch (e) {
-    console.error("🏷️ Paperless-Tag: Fehler beim Sicherstellen des Tags:", e);
+    
+    console.warn("🏷️ Paperless-Tag: No createTag API available");
     return false;
+  } catch (e) {
+    console.error("🏷️ Paperless-Tag: Error creating tag:", e);
+    return false;
+  }
+}
+
+/**
+ * Ensure the Paperless tag exists in Thunderbird, creating it if absent.
+ * After creation, re-lists tags and verifies key registration before returning true.
+ * @returns {Promise<boolean>} True if tag exists or was created successfully
+ */
+async function ensurePaperlessTag() {
+  try {
+    let tags = await listAllTags();
+    
+    if (!tags) {
+      console.warn("🏷️ Paperless-Tag: Tags API not available");
+      return false;
+    }
+    
+    // Check if tag already exists
+    let existingTag = findPaperlessTag(tags);
+    if (existingTag) {
+      console.log("🏷️ Paperless-Tag: Tag already exists with key:", existingTag.key);
+      return true;
+    }
+    
+    // Tag doesn't exist, create it
+    console.log("🏷️ Paperless-Tag: Tag does not exist, creating...");
+    const created = await createMailTag(PAPERLESS_TAG_KEY, PAPERLESS_TAG_LABEL, PAPERLESS_TAG_COLOR);
+    
+    if (!created) {
+      console.warn("🏷️ Paperless-Tag: Failed to create tag");
+      return false;
+    }
+    
+    // Re-list tags and verify registration
+    tags = await listAllTags();
+    if (!tags) {
+      console.warn("🏷️ Paperless-Tag: Could not re-list tags after creation");
+      return false;
+    }
+    
+    existingTag = findPaperlessTag(tags);
+    if (existingTag) {
+      console.log("🏷️ Paperless-Tag: Tag creation verified, key:", existingTag.key);
+      return true;
+    }
+    
+    console.warn("🏷️ Paperless-Tag: Tag not found after creation");
+    return false;
+  } catch (e) {
+    console.error("🏷️ Paperless-Tag: Error ensuring tag:", e);
+    return false;
+  }
+}
+
+/**
+ * Add the Paperless tag to an email in Thunderbird.
+ * Preserves existing tags on the message.
+ * Re-fetches the message to verify tag assignment and logs a warning if not present.
+ * Never throws.
+ * @param {number} messageId - Thunderbird message ID
+ */
+async function addPaperlessTagToEmail(messageId) {
+  try {
+    console.log("🏷️ Paperless-Tag: Starting tag assignment for message", messageId);
+    
+    // Ensure tag exists
+    const tagReady = await ensurePaperlessTag();
+    if (!tagReady) {
+      console.warn("🏷️ Paperless-Tag: Could not ensure tag exists, skipping assignment");
+      return;
+    }
+    
+    // Get the message
+    const msg = await browser.messages.get(messageId);
+    if (!msg) {
+      console.warn("🏷️ Paperless-Tag: Message not found:", messageId);
+      return;
+    }
+    
+    // Build new tag set preserving existing tags
+    const existingTags = new Set(msg.tags || []);
+    if (existingTags.has(PAPERLESS_TAG_KEY)) {
+      console.log("🏷️ Paperless-Tag: Tag already assigned to message, skipping");
+      return;
+    }
+    
+    existingTags.add(PAPERLESS_TAG_KEY);
+    const newTags = Array.from(existingTags);
+    
+    console.log("🏷️ Paperless-Tag: Updating message tags:", newTags);
+    await browser.messages.update(messageId, { tags: newTags });
+    
+    // Re-fetch message to verify tag was assigned
+    const verifyMsg = await browser.messages.get(messageId);
+    if (verifyMsg && verifyMsg.tags && verifyMsg.tags.includes(PAPERLESS_TAG_KEY)) {
+      console.log("🏷️ Paperless-Tag: Tag successfully assigned and verified for message", messageId);
+    } else {
+      console.warn("🏷️ Paperless-Tag: Tag assignment could not be verified for message", messageId);
+    }
+  } catch (e) {
+    console.error("🏷️ Paperless-Tag: Error adding tag to message", messageId, e);
+    // Never throw - just log the error
   }
 }
 
