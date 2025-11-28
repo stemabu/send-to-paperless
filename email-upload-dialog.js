@@ -4,7 +4,7 @@ let currentMessage = null;
 let currentAttachments = [];
 let emailBody = '';
 
-// Get file icon based on file extension
+// Get file icon (emoji) based on file extension - used in the dialog UI
 function getFileIcon(filename) {
   const ext = filename.toLowerCase().split('.').pop();
   
@@ -13,22 +13,69 @@ function getFileIcon(filename) {
       return '📄';
     case 'doc':
     case 'docx':
+    case 'odt':
       return '📝';
     case 'xls':
     case 'xlsx':
+    case 'ods':
+    case 'csv':
       return '📊';
+    case 'ppt':
+    case 'pptx':
+    case 'odp':
+      return '📽️';
     case 'jpg':
     case 'jpeg':
     case 'png':
     case 'gif':
     case 'bmp':
+    case 'svg':
+    case 'webp':
+    case 'ico':
+    case 'tiff':
+    case 'tif':
       return '🖼️';
     case 'zip':
     case 'rar':
     case '7z':
     case 'tar':
     case 'gz':
+    case 'bz2':
+    case 'xz':
       return '📦';
+    case 'txt':
+    case 'rtf':
+    case 'md':
+    case 'log':
+      return '📃';
+    case 'html':
+    case 'htm':
+    case 'xml':
+    case 'json':
+      return '🌐';
+    case 'mp3':
+    case 'wav':
+    case 'ogg':
+    case 'flac':
+    case 'aac':
+    case 'm4a':
+      return '🎵';
+    case 'mp4':
+    case 'avi':
+    case 'mov':
+    case 'mkv':
+    case 'webm':
+    case 'wmv':
+    case 'flv':
+      return '🎬';
+    case 'eml':
+    case 'msg':
+      return '✉️';
+    case 'exe':
+    case 'msi':
+    case 'dmg':
+    case 'app':
+      return '⚙️';
     default:
       return '📎';
   }
@@ -217,6 +264,70 @@ function setupEventListeners() {
   });
 }
 
+// Get file type indicator for PDF (plain text, since jsPDF doesn't support emoji well)
+function getFileTypeIndicator(filename) {
+  const ext = filename.toLowerCase().split('.').pop();
+  
+  switch (ext) {
+    case 'pdf':
+      return '[PDF]';
+    case 'doc':
+    case 'docx':
+      return '[DOC]';
+    case 'xls':
+    case 'xlsx':
+    case 'ods':
+    case 'csv':
+      return '[XLS]';
+    case 'ppt':
+    case 'pptx':
+    case 'odp':
+      return '[PPT]';
+    case 'jpg':
+    case 'jpeg':
+    case 'png':
+    case 'gif':
+    case 'bmp':
+    case 'svg':
+    case 'webp':
+      return '[IMG]';
+    case 'zip':
+    case 'rar':
+    case '7z':
+    case 'tar':
+    case 'gz':
+      return '[ZIP]';
+    case 'txt':
+    case 'rtf':
+    case 'md':
+    case 'log':
+      return '[TXT]';
+    case 'html':
+    case 'htm':
+      return '[HTML]';
+    case 'xml':
+      return '[XML]';
+    case 'json':
+      return '[JSON]';
+    case 'mp3':
+    case 'wav':
+    case 'ogg':
+    case 'flac':
+      return '[AUDIO]';
+    case 'mp4':
+    case 'avi':
+    case 'mov':
+    case 'mkv':
+    case 'webm':
+      return '[VIDEO]';
+    case 'eml':
+    case 'msg':
+      return '[MAIL]';
+    default:
+      return '[FILE]';
+  }
+}
+
 // Generate PDF from email
 function generateEmailPdf() {
   console.log('📄 Starting PDF generation...');
@@ -235,13 +346,9 @@ function generateEmailPdf() {
   const pageHeight = doc.internal.pageSize.getHeight();
   const margin = 10;  // 1cm margin
   const contentWidth = pageWidth - (margin * 2);
-  let yPosition = margin;
-
-  // Header background (gray)
-  doc.setFillColor(240, 240, 240);
-  
-  // Calculate header height (will be adjusted after adding content)
-  let headerHeight = 50; // Initial estimate
+  const lineHeight = 4;  // Base line height for font size 10
+  const headerPadding = 3; // Padding inside header box
+  const labelWidth = 22; // Width reserved for labels (Datum:, Von:, etc.)
   
   // Prepare header content
   const emailDate = new Date(currentMessage.date).toLocaleDateString('de-DE', {
@@ -256,92 +363,111 @@ function generateEmailPdf() {
   // Get recipients
   const recipients = currentMessage.recipients ? currentMessage.recipients.join(', ') : '';
 
-  // Prepare attachment list with "📎 Anhang: " prefix for each attachment
+  // Prepare attachment list with file type indicators
   const selectedAttachments = getSelectedAttachments();
-  let attachmentText = '';
+  let attachmentTextLines = [];
   if (selectedAttachments.length > 0) {
-    attachmentText = selectedAttachments.map(att => 'Anhang: ' + att.name).join(', ');
+    // Build attachment text with type indicators
+    const attachmentStrings = selectedAttachments.map(att => {
+      const typeIndicator = getFileTypeIndicator(att.name);
+      return `${typeIndicator} ${att.name}`;
+    });
+    // Join with comma and let splitTextToSize handle wrapping
+    const attachmentText = attachmentStrings.join(', ');
+    doc.setFontSize(9);
+    attachmentTextLines = doc.splitTextToSize(attachmentText, contentWidth - labelWidth - headerPadding);
+    doc.setFontSize(10);
   }
 
-  // Calculate actual header height with 1.3 line spacing
+  // Pre-calculate all text lines for accurate header height
   doc.setFontSize(10);
-  const lineHeight = 4;  // Base line height for 1.3 spacing at font size 10
-  const subjectLines = doc.splitTextToSize(currentMessage.subject || '', contentWidth - 50);
-  const fromLines = doc.splitTextToSize(currentMessage.author || '', contentWidth - 30);
-  const toLines = recipients ? doc.splitTextToSize(recipients, contentWidth - 30) : [];
-  const attachmentLines = attachmentText ? doc.splitTextToSize(attachmentText, contentWidth - 50) : [];
+  const subjectLines = doc.splitTextToSize(currentMessage.subject || '', contentWidth - labelWidth - headerPadding);
+  const fromLines = doc.splitTextToSize(currentMessage.author || '', contentWidth - labelWidth - headerPadding);
+  const toLines = recipients ? doc.splitTextToSize(recipients, contentWidth - labelWidth - headerPadding) : [];
   
-  headerHeight = 8 + // Top padding
-    lineHeight + // Date line
-    (fromLines.length * lineHeight) + // From lines
-    (toLines.length > 0 ? toLines.length * lineHeight : 0) + // To lines
-    (subjectLines.length * lineHeight) + // Subject lines
-    (attachmentLines.length > 0 ? attachmentLines.length * lineHeight : 0) + // Attachment lines
-    1; // Bottom padding (reduced from 4 to 1 for ~3mm spacing to separator)
+  // Calculate exact header height based on content
+  let headerContentHeight = 0;
+  headerContentHeight += lineHeight; // Date line
+  headerContentHeight += fromLines.length * lineHeight; // From lines
+  if (toLines.length > 0) {
+    headerContentHeight += toLines.length * lineHeight; // To lines
+  }
+  headerContentHeight += subjectLines.length * lineHeight; // Subject lines
+  if (attachmentTextLines.length > 0) {
+    headerContentHeight += attachmentTextLines.length * lineHeight; // Attachment lines
+  }
+  
+  // Total header height = top padding + content + bottom padding
+  const headerHeight = headerPadding + headerContentHeight + headerPadding;
 
-  // Draw header background
+  // Draw header background - exact fit to content
   doc.setFillColor(240, 240, 240);
   doc.rect(margin, margin, contentWidth, headerHeight, 'F');
 
-  yPosition = margin + 4;
+  // Start writing content inside header
+  let yPosition = margin + headerPadding;
+  const textX = margin + headerPadding;
+  const valueX = margin + headerPadding + labelWidth;
 
   // Date line
   doc.setFontSize(10);
   doc.setFont('helvetica', 'bold');
-  doc.text('Datum:', margin + 3, yPosition + 3);
+  doc.text('Datum:', textX, yPosition + 3);
   doc.setFont('helvetica', 'normal');
-  doc.text(emailDate, margin + 25, yPosition + 3);
+  doc.text(emailDate, valueX, yPosition + 3);
   yPosition += lineHeight;
 
   // From line
   doc.setFont('helvetica', 'bold');
-  doc.text('Von:', margin + 3, yPosition + 3);
+  doc.text('Von:', textX, yPosition + 3);
   doc.setFont('helvetica', 'normal');
   fromLines.forEach((line, index) => {
-    doc.text(line, margin + 25, yPosition + 3 + (index * lineHeight));
+    doc.text(line, valueX, yPosition + 3 + (index * lineHeight));
   });
-  yPosition += lineHeight + ((fromLines.length - 1) * lineHeight);
+  yPosition += fromLines.length * lineHeight;
 
   // To line (if recipients exist)
-  if (recipients) {
+  if (toLines.length > 0) {
     doc.setFont('helvetica', 'bold');
-    doc.text('An:', margin + 3, yPosition + 3);
+    doc.text('An:', textX, yPosition + 3);
     doc.setFont('helvetica', 'normal');
     toLines.forEach((line, index) => {
-      doc.text(line, margin + 25, yPosition + 3 + (index * lineHeight));
+      doc.text(line, valueX, yPosition + 3 + (index * lineHeight));
     });
-    yPosition += lineHeight + ((toLines.length - 1) * lineHeight);
+    yPosition += toLines.length * lineHeight;
   }
 
-  // Subject line (bold)
+  // Subject line (bold value)
   doc.setFont('helvetica', 'bold');
-  doc.text('Betreff:', margin + 3, yPosition + 3);
-  doc.setFont('helvetica', 'bold');
+  doc.text('Betreff:', textX, yPosition + 3);
   subjectLines.forEach((line, index) => {
-    doc.text(line, margin + 25, yPosition + 3 + (index * lineHeight));
+    doc.text(line, valueX, yPosition + 3 + (index * lineHeight));
   });
-  yPosition += lineHeight + ((subjectLines.length - 1) * lineHeight);
+  yPosition += subjectLines.length * lineHeight;
 
   // Attachments line (if any)
-  if (attachmentText) {
+  if (attachmentTextLines.length > 0) {
     doc.setFont('helvetica', 'bold');
-    doc.text('Anhänge:', margin + 3, yPosition + 3);
+    doc.setFontSize(10);
+    doc.text('Anhänge:', textX, yPosition + 3);
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(9);
-    attachmentLines.forEach((line, index) => {
-      doc.text(line, margin + 25, yPosition + 3 + (index * lineHeight));
+    attachmentTextLines.forEach((line, index) => {
+      doc.text(line, valueX, yPosition + 3 + (index * lineHeight));
     });
-    yPosition += lineHeight + ((attachmentLines.length - 1) * lineHeight);
+    yPosition += attachmentTextLines.length * lineHeight;
     doc.setFontSize(10);
   }
 
-  // Horizontal line separator - right after header
+  // Position for separator line - directly after header box
   yPosition = margin + headerHeight;
+  
+  // Horizontal line separator - directly at end of header
   doc.setDrawColor(180, 180, 180);
   doc.setLineWidth(0.5);
   doc.line(margin, yPosition, pageWidth - margin, yPosition);
 
-  yPosition += 3; // Reduced spacing from 5mm to 3mm after separator
+  yPosition += 5; // Space after separator before body
 
   // Email body
   doc.setFont('helvetica', 'normal');
