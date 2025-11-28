@@ -365,9 +365,10 @@ async function updateDocumentCustomFields(config, documentId, customFields) {
 }
 
 // Helper function to find Paperless tag in a list of tags
+// Uses case-insensitive comparison for robustness
 function findPaperlessTag(tags) {
   return tags.find(tag => 
-    tag.key === PAPERLESS_TAG_KEY ||
+    tag.key?.toLowerCase() === PAPERLESS_TAG_KEY.toLowerCase() ||
     tag.tag?.toLowerCase() === PAPERLESS_TAG_KEY.toLowerCase()
   );
 }
@@ -415,7 +416,8 @@ async function createMailTag(key, label, color) {
     
     if (browser.messages.tags?.create) {
       console.log("🏷️ Paperless-Tag: Fallback to browser.messages.tags.create()");
-      // Pass both 'tag' and 'label' fields for compatibility
+      // Pass both 'tag' and 'label' fields for compatibility with different
+      // Thunderbird API versions: older versions use 'tag', newer use 'label'
       await browser.messages.tags.create({
         key: key,
         tag: label,
@@ -436,7 +438,9 @@ async function createMailTag(key, label, color) {
           return false;
         }
       }
-      return true;
+      // Could not re-list tags for verification - report failure for safety
+      console.warn("🏷️ Paperless-Tag: Could not verify tag creation (unable to list tags)");
+      return false;
     }
     
     console.warn("🏷️ Paperless-Tag: No createTag API available");
