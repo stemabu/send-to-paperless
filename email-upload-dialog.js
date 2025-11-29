@@ -997,6 +997,7 @@ async function handleUpload(event) {
     clearMessages();
 
     const direction = document.getElementById('direction').value;
+    const pdfStrategy = document.getElementById('pdfStrategy').value;
     const selectedAttachments = getSelectedAttachments();
 
     // Get correspondent
@@ -1012,6 +1013,7 @@ async function handleUpload(event) {
 
     console.log('📤 Upload parameters:');
     console.log('📤 - Direction:', direction);
+    console.log('📤 - PDF Strategy:', pdfStrategy);
     console.log('📤 - Correspondent:', correspondent);
     console.log('📤 - Tags:', selectedTags);
     console.log('📤 - Document Date:', documentDate);
@@ -1020,38 +1022,58 @@ async function handleUpload(event) {
       console.log(`📤   [${i}] ${att.name} (${att.contentType}, partName: ${att.partName})`);
     });
 
-    // Generate PDF from email
-    console.log('📤 Generating email PDF...');
-    const { blob: pdfBlob, filename: pdfFilename } = await generateEmailPdf();
-    console.log('📤 Generated PDF:', pdfFilename, 'size:', pdfBlob.size);
+    let result;
 
-    // Convert blob to base64
-    console.log('📤 Converting PDF to base64...');
-    const pdfBase64 = await blobToBase64(pdfBlob);
-    console.log('📤 PDF base64 length:', pdfBase64.length);
+    if (pdfStrategy === 'eml') {
+      // Upload email as .eml file for Paperless Gotenberg conversion
+      console.log('📤 Using EML upload strategy (Paperless Gotenberg)...');
+      
+      result = await browser.runtime.sendMessage({
+        action: 'uploadEmailAsEml',
+        messageData: currentMessage,
+        selectedAttachments: selectedAttachments,
+        direction: direction,
+        correspondent: correspondent,
+        tags: selectedTags,
+        documentDate: documentDate
+      });
+    } else {
+      // Generate PDF locally using html2canvas + jsPDF
+      console.log('📤 Using local PDF generation strategy...');
+      console.log('📤 Generating email PDF...');
+      const { blob: pdfBlob, filename: pdfFilename } = await generateEmailPdf();
+      console.log('📤 Generated PDF:', pdfFilename, 'size:', pdfBlob.size);
 
-    // Send upload request to background script
-    console.log('📤 Sending message to background script...');
-    console.log('📤 Message data:', JSON.stringify(currentMessage));
-    
-    const result = await browser.runtime.sendMessage({
-      action: 'uploadEmailWithAttachments',
-      messageData: currentMessage,
-      emailPdf: {
-        blob: pdfBase64,
-        filename: pdfFilename
-      },
-      selectedAttachments: selectedAttachments,
-      direction: direction,
-      correspondent: correspondent,
-      tags: selectedTags,
-      documentDate: documentDate
-    });
+      // Convert blob to base64
+      console.log('📤 Converting PDF to base64...');
+      const pdfBase64 = await blobToBase64(pdfBlob);
+      console.log('📤 PDF base64 length:', pdfBase64.length);
+
+      // Send upload request to background script
+      console.log('📤 Sending message to background script...');
+      console.log('📤 Message data:', JSON.stringify(currentMessage));
+      
+      result = await browser.runtime.sendMessage({
+        action: 'uploadEmailWithAttachments',
+        messageData: currentMessage,
+        emailPdf: {
+          blob: pdfBase64,
+          filename: pdfFilename
+        },
+        selectedAttachments: selectedAttachments,
+        direction: direction,
+        correspondent: correspondent,
+        tags: selectedTags,
+        documentDate: documentDate
+      });
+    }
 
     console.log('📤 Received result from background:', JSON.stringify(result));
 
     if (result && result.success) {
-      let successMsg = 'E-Mail und Anhänge wurden erfolgreich an Paperless-ngx gesendet!';
+      let successMsg = pdfStrategy === 'eml' 
+        ? 'E-Mail als .eml erfolgreich hochgeladen!'
+        : 'E-Mail und Anhänge wurden erfolgreich an Paperless-ngx gesendet!';
       
       // Show warning if document is still processing
       if (result.warning) {

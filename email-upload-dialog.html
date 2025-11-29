@@ -319,6 +319,15 @@
         </div>
 
         <div class="form-group">
+          <label for="pdfStrategy">PDF-Konvertierung</label>
+          <select id="pdfStrategy" name="pdfStrategy">
+            <option value="local" selected>Lokal (Browser)</option>
+            <option value="eml">Via Paperless (.eml)</option>
+          </select>
+          <div class="help-text">💡 Bei komplexen E-Mails "Via Paperless" wählen</div>
+        </div>
+
+        <div class="form-group">
           <label for="correspondent">Korrespondent (optional)</label>
           <select id="correspondent" name="correspondent">
             <option value="">Keinen Korrespondenten auswählen</option>
