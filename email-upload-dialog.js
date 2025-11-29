@@ -997,7 +997,9 @@ async function handleUpload(event) {
     clearMessages();
 
     const direction = document.getElementById('direction').value;
-    const pdfStrategy = document.getElementById('pdfStrategy').value;
+    // Checkbox: checked = local, unchecked = eml (Paperless/Gotenberg)
+    const pdfStrategyCheckbox = document.getElementById('pdfStrategy');
+    const pdfStrategy = pdfStrategyCheckbox.checked ? 'local' : 'eml';
     const selectedAttachments = getSelectedAttachments();
 
     // Get correspondent
