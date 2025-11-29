@@ -100,34 +100,129 @@
     .api-info {
       background: #e7f3ff;
       border: 1px solid #b3d9ff;
-      padding: 15px;
+      padding: 10px 15px;
       border-radius: 6px;
       margin-bottom: 20px;
+      font-size: 13px;
     }
 
-    .api-info h3 {
-      margin-top: 0;
-      color: #0056b3;
+    .api-info p {
+      margin: 0;
+    }
+
+    .section-header {
+      margin-top: 25px;
+      margin-bottom: 15px;
+      padding-bottom: 8px;
+      border-bottom: 2px solid #e9ecef;
+      color: #495057;
+      font-size: 15px;
+      font-weight: 600;
+    }
+
+    .mapping-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px;
+      background: #f8f9fa;
+      border: 1px solid #e9ecef;
+      border-radius: 4px;
+      margin-bottom: 8px;
+    }
+
+    .mapping-item-content {
+      flex: 1;
+      display: flex;
+      gap: 15px;
+      align-items: center;
+    }
+
+    .mapping-email {
+      font-weight: 600;
+      color: #495057;
+      min-width: 200px;
+    }
+
+    .mapping-arrow {
+      color: #6c757d;
+    }
+
+    .mapping-correspondent {
+      color: #007bff;
+    }
+
+    .mapping-delete {
+      background: #dc3545;
+      color: white;
+      border: none;
+      padding: 6px 12px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+    }
+
+    .mapping-delete:hover {
+      background: #c82333;
+    }
+
+    .btn-secondary {
+      background: #6c757d;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+
+    .btn-secondary:hover {
+      background: #545b62;
+    }
+
+    .mapping-form {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      margin-top: 15px;
+      flex-wrap: wrap;
+    }
+
+    .mapping-form input,
+    .mapping-form select {
+      padding: 8px 12px;
+      border: 2px solid #e9ecef;
+      border-radius: 6px;
+      font-size: 14px;
+    }
+
+    .mapping-form input {
+      flex: 1;
+      min-width: 180px;
+    }
+
+    .mapping-form select {
+      flex: 1;
+      min-width: 150px;
+    }
+
+    .mapping-form button {
+      padding: 8px 16px;
     }
   </style>
 </head>
 
 <body>
   <div class="container">
-    <div style="display: flex; align-items: center; justify-content: center; margin-bottom: 30px;">
-      <img src="icons/icon-64.png" alt="Paperless PDF Uploader" style="height: 3em; width: 3em; margin-right: 20px;">
+    <div style="display: flex; align-items: center; justify-content: center; margin-bottom: 20px;">
+      <img src="icons/icon-64.png" alt="Paperless PDF Uploader" style="height: 2.5em; width: 2.5em; margin-right: 15px;">
       <div>
-        <div style="font-size: 2em; font-weight: bold; color: #2c3e50;">Paperless-ngx</div>
-        <div style="font-size: 2em; font-weight: bold; color: #2c3e50;">Uploader-Einstellungen</div>
+        <div style="font-size: 1.5em; font-weight: bold; color: #2c3e50;">Paperless-ngx</div>
+        <div style="font-size: 1.5em; font-weight: bold; color: #2c3e50;">Uploader-Einstellungen</div>
       </div>
     </div>
 
     <div class="api-info">
-      <h3>Getting Your API Token</h3>
-      <p>1. Log into your Paperless-ngx instance</p>
-      <p>2. Go to Settings → API Tokens</p>
-      <p>3. Create a new token or copy an existing one</p>
-      <p>4. Make sure the token has document upload permissions</p>
+      <p>📌 API-Token: Settings → API Tokens in Paperless-ngx</p>
     </div>
 
     <form id="settingsForm">
@@ -153,6 +248,25 @@
 
       <div id="statusMessage" class="status-message"></div>
     </form>
+
+    <!-- Email to Correspondent Mapping Section -->
+    <div class="section-header">📧 E-Mail-Adressen ↔ Korrespondenten-Zuordnung</div>
+    <div class="help-text" style="margin-bottom: 15px;">
+      Ordnen Sie E-Mail-Adressen Korrespondenten zu. Beim Upload wird der Korrespondent und die Richtung automatisch vorgeschlagen.
+    </div>
+
+    <div id="mappingList">
+      <!-- Mappings werden hier dynamisch eingefügt -->
+    </div>
+
+    <div class="mapping-form">
+      <input type="email" id="newMappingEmail" placeholder="E-Mail-Adresse">
+      <select id="newMappingCorrespondent">
+        <option value="">Korrespondent wählen...</option>
+        <!-- Wird dynamisch befüllt -->
+      </select>
+      <button type="button" id="addMappingBtn" class="btn-secondary">Hinzufügen</button>
+    </div>
   </div>
 
   <script src="utils.js"></script>

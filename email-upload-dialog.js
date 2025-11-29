@@ -5,6 +5,67 @@ let currentAttachments = [];
 let emailBody = '';
 let isHtmlBody = false;
 
+// Extract email address from email string like "John Doe <john@example.com>"
+function extractEmailAddress(emailString) {
+  if (!emailString) return null;
+  
+  const match = emailString.match(/<(.+?)>/);
+  if (match) {
+    return match[1].trim().toLowerCase();
+  }
+  
+  return emailString.trim().toLowerCase();
+}
+
+// Find correspondent match based on email addresses
+async function findCorrespondentMatch() {
+  try {
+    const result = await browser.storage.sync.get('emailCorrespondentMapping');
+    const mappings = result.emailCorrespondentMapping || [];
+    
+    if (mappings.length === 0) {
+      return null;
+    }
+    
+    const fromEmail = extractEmailAddress(currentMessage.author);
+    const toEmails = (currentMessage.recipients || []).map(r => extractEmailAddress(r));
+    
+    console.log('📧 Checking for correspondent match...');
+    console.log('📧 From:', fromEmail);
+    console.log('📧 To:', toEmails);
+    
+    // Check FROM field first - if match found, it's incoming mail
+    const fromMatch = mappings.find(m => m.email === fromEmail);
+    if (fromMatch) {
+      console.log('📧 Match found in FROM field:', fromMatch);
+      return {
+        correspondentId: fromMatch.correspondentId,
+        correspondentName: fromMatch.correspondentName,
+        direction: 'Eingang'
+      };
+    }
+    
+    // Check TO field - if match found, it's outgoing mail
+    for (const toEmail of toEmails) {
+      const toMatch = mappings.find(m => m.email === toEmail);
+      if (toMatch) {
+        console.log('📧 Match found in TO field:', toMatch);
+        return {
+          correspondentId: toMatch.correspondentId,
+          correspondentName: toMatch.correspondentName,
+          direction: 'Ausgang'
+        };
+      }
+    }
+    
+    console.log('📧 No correspondent match found');
+    return null;
+  } catch (error) {
+    console.error('Error finding correspondent match:', error);
+    return null;
+  }
+}
+
 // Get file icon (emoji) based on file extension - used in the dialog UI
 function getFileIcon(filename) {
   const ext = filename.toLowerCase().split('.').pop();
@@ -85,6 +146,7 @@ function getFileIcon(filename) {
 document.addEventListener('DOMContentLoaded', async function () {
   await loadEmailData();
   await loadCorrespondents();
+  await applyCorrespondentMatch();
   await loadTags();
   setupEventListeners();
 });
@@ -182,6 +244,23 @@ async function loadEmailData() {
     console.error('📧 Error loading email data:', error);
     console.error('📧 Error stack:', error.stack);
     showError('Fehler beim Laden der E-Mail-Daten: ' + error.message);
+  }
+}
+
+// Apply correspondent match after correspondents are loaded
+async function applyCorrespondentMatch() {
+  const match = await findCorrespondentMatch();
+  if (match) {
+    console.log('📧 Applying correspondent suggestion:', match);
+    
+    const correspondentSelect = document.getElementById('correspondent');
+    correspondentSelect.value = match.correspondentId;
+    
+    const directionSelect = document.getElementById('direction');
+    directionSelect.value = match.direction;
+    
+    console.log('📧 Pre-selected correspondent:', match.correspondentName);
+    console.log('📧 Pre-selected direction:', match.direction);
   }
 }
 

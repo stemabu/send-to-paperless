@@ -1,5 +1,6 @@
 document.addEventListener('DOMContentLoaded', loadSettings);
 document.getElementById('settingsForm').addEventListener('submit', saveSettings);
+document.getElementById('addMappingBtn').addEventListener('click', addMapping);
 
 async function loadSettings() {
   const settings = await getPaperlessSettings();
@@ -7,6 +8,9 @@ async function loadSettings() {
   document.getElementById('paperlessUrl').value = settings.paperlessUrl || '';
   document.getElementById('paperlessToken').value = settings.paperlessToken || '';
   document.getElementById('defaultTags').value = settings.defaultTags || '';
+  
+  await loadCorrespondents();
+  await displayMappings();
 }
 
 
@@ -98,5 +102,144 @@ function showStatus(message, type) {
     setTimeout(() => {
       statusEl.style.display = 'none';
     }, 3000);
+  }
+}
+
+// Load correspondents from Paperless-ngx API
+async function loadCorrespondents() {
+  const settings = await getPaperlessSettings();
+  
+  if (!settings.paperlessUrl || !settings.paperlessToken) {
+    return;
+  }
+  
+  try {
+    const response = await fetch(`${settings.paperlessUrl}/api/correspondents/?page_size=1000`, {
+      headers: {
+        'Authorization': `Token ${settings.paperlessToken}`
+      }
+    });
+    
+    if (response.ok) {
+      const data = await response.json();
+      const select = document.getElementById('newMappingCorrespondent');
+      
+      while (select.options.length > 1) {
+        select.remove(1);
+      }
+      
+      data.results.forEach(correspondent => {
+        const option = document.createElement('option');
+        option.value = correspondent.id;
+        option.textContent = correspondent.name;
+        option.dataset.name = correspondent.name;
+        select.appendChild(option);
+      });
+    }
+  } catch (error) {
+    console.error('Failed to load correspondents:', error);
+  }
+}
+
+// Display existing mappings
+async function displayMappings() {
+  const result = await browser.storage.sync.get('emailCorrespondentMapping');
+  const mappings = result.emailCorrespondentMapping || [];
+  
+  const container = document.getElementById('mappingList');
+  container.innerHTML = '';
+  
+  if (mappings.length === 0) {
+    container.innerHTML = '<div style="color: #6c757d; font-size: 13px; font-style: italic;">Noch keine Zuordnungen vorhanden</div>';
+    return;
+  }
+  
+  mappings.forEach((mapping, index) => {
+    const item = document.createElement('div');
+    item.className = 'mapping-item';
+    item.innerHTML = `
+      <div class="mapping-item-content">
+        <span class="mapping-email">${escapeHtml(mapping.email)}</span>
+        <span class="mapping-arrow">→</span>
+        <span class="mapping-correspondent">${escapeHtml(mapping.correspondentName)}</span>
+      </div>
+      <button class="mapping-delete" data-index="${index}">🗑️ Löschen</button>
+    `;
+    
+    item.querySelector('.mapping-delete').addEventListener('click', () => deleteMapping(index));
+    container.appendChild(item);
+  });
+}
+
+// Escape HTML to prevent XSS
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+// Add new mapping
+async function addMapping() {
+  const emailInput = document.getElementById('newMappingEmail');
+  const correspondentSelect = document.getElementById('newMappingCorrespondent');
+  
+  const email = emailInput.value.trim().toLowerCase();
+  const correspondentId = correspondentSelect.value;
+  const correspondentName = correspondentSelect.options[correspondentSelect.selectedIndex]?.dataset.name;
+  
+  if (!email || !correspondentId) {
+    showStatus('Bitte E-Mail-Adresse und Korrespondent auswählen', 'error');
+    return;
+  }
+  
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(email)) {
+    showStatus('Bitte gültige E-Mail-Adresse eingeben', 'error');
+    return;
+  }
+  
+  try {
+    const result = await browser.storage.sync.get('emailCorrespondentMapping');
+    const mappings = result.emailCorrespondentMapping || [];
+    
+    if (mappings.some(m => m.email === email)) {
+      showStatus('Diese E-Mail-Adresse ist bereits zugeordnet', 'error');
+      return;
+    }
+    
+    mappings.push({
+      email: email,
+      correspondentId: parseInt(correspondentId),
+      correspondentName: correspondentName
+    });
+    
+    await browser.storage.sync.set({ emailCorrespondentMapping: mappings });
+    
+    emailInput.value = '';
+    correspondentSelect.selectedIndex = 0;
+    await displayMappings();
+    
+    showStatus('Zuordnung hinzugefügt', 'success');
+  } catch (error) {
+    console.error('Error adding mapping:', error);
+    showStatus('Fehler beim Hinzufügen der Zuordnung', 'error');
+  }
+}
+
+// Delete mapping
+async function deleteMapping(index) {
+  try {
+    const result = await browser.storage.sync.get('emailCorrespondentMapping');
+    const mappings = result.emailCorrespondentMapping || [];
+    
+    mappings.splice(index, 1);
+    
+    await browser.storage.sync.set({ emailCorrespondentMapping: mappings });
+    await displayMappings();
+    
+    showStatus('Zuordnung gelöscht', 'success');
+  } catch (error) {
+    console.error('Error deleting mapping:', error);
+    showStatus('Fehler beim Löschen der Zuordnung', 'error');
   }
 }
