@@ -1,9 +1,9 @@
 # Send to Paperless-ngx
 
 <p align="center">
-  <img src="icons/icon-512.png" alt="Paperless Uploader Icon" width="256" height="256">
+  <img src="icons/icon-512.png" alt="Send-to-Paperless-Icon" width="256" height="256">
 </p>
-<p align="center">This Addon is based on https://github.com/sebastian-xyz/paperless-upload-thunderbird</p>
+<p align="center">This Addon is based on https://github.com/sebastian-xyz/paperless-upload-thunderbird</p>, but it was heavily customized to my personal needs. 
 
 ---
 
@@ -24,11 +24,13 @@
 
 ## Features
 
-- 📄 Upload E-Mails and/or PDF attachments from any email directly to paperless-ngx
-- 🔒 Secure, local processing—no third-party servers
-- 🛠️ Simple configuration for your paperless-ngx instance
-- 🔔 Optional notifications on upload success or failure
-- 🧩 Seamless integration with Thunderbird’s UI
+- Upload E-Mails and/or PDF attachments from any email directly to paperless-ngx
+- Secure, local processing—no third-party servers
+- An email is always linked to its attachments in Paperless (related documents function)
+- Optional suggestions for correspondents based on email addresses (can be set in the options area)
+- Setting of mail direction ("Eingang" or "Ausgang")
+- Emails sent to Paperless are marked with the keyword “Paperless”
+- German interface only
 
 ---
 
