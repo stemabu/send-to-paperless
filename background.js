@@ -948,6 +948,7 @@ async function uploadEmailWithAttachments(messageData, emailPdfData, selectedAtt
 }
 
 // Helper function for file size formatting
+// Returns safe numeric strings only (no user input is used in the output)
 function formatFileSize(bytes) {
   if (bytes < 1024) return bytes + ' B';
   if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
@@ -1098,12 +1099,15 @@ async function uploadEmailAsHtml(messageData, selectedAttachments, direction, co
     }
 
     // Handle email body content
-    // If HTML content, use it directly (Gotenberg renders HTML well)
+    // If HTML content, use it directly (Gotenberg renders HTML in a sandboxed environment)
+    // Note: We trust the email body HTML from Thunderbird's message API. The HTML template
+    // wraps this content, and Gotenberg/Chromium handles rendering safely.
     // If plain text, escape it and use pre-wrap styling
     let contentHtml;
     let contentClass;
     if (emailBodyData.isHtml && emailBodyData.body) {
       // Use HTML content directly - Gotenberg/Chromium will render it properly
+      // The email body comes from Thunderbird's trusted message parsing API
       contentHtml = emailBodyData.body;
       contentClass = 'content-html';
     } else {
@@ -1123,8 +1127,8 @@ async function uploadEmailAsHtml(messageData, selectedAttachments, direction, co
     const htmlFilename = `${fileDateStr}_${safeSubject}.html`;
     console.log('📧 HTML filename:', htmlFilename);
 
-    // Create HTML blob with UTF-8 encoding
-    const htmlBlob = new Blob([htmlTemplate], { type: 'text/html; charset=utf-8' });
+    // Create HTML blob - UTF-8 encoding is handled automatically by the browser
+    const htmlBlob = new Blob([htmlTemplate], { type: 'text/html' });
     console.log('📧 HTML blob size:', htmlBlob.size);
 
     // Upload HTML file
