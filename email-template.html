@@ -1,0 +1,92 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    /* Inline CSS for portability - Gotenberg renders this via Chromium */
+    body { 
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+      margin: 0;
+      padding: 20px;
+      background: white;
+      color: #1a1a1a;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+    .container { 
+      max-width: 800px; 
+      margin: 0 auto; 
+    }
+    .header { 
+      background: #e2e8f0; 
+      padding: 20px; 
+      margin-bottom: 20px;
+      border-radius: 4px;
+    }
+    .header-row { 
+      margin: 8px 0; 
+      display: flex; 
+    }
+    .header-label { 
+      color: #64748b; 
+      min-width: 80px; 
+      text-align: right; 
+      padding-right: 12px;
+      font-weight: 500;
+    }
+    .header-value { 
+      flex: 1; 
+      word-break: break-word;
+    }
+    .subject { 
+      font-weight: bold; 
+    }
+    .date { 
+      color: #64748b; 
+      float: right; 
+      font-size: 13px;
+    }
+    .separator { 
+      border-top: 1px solid #cbd5e1; 
+      margin: 20px 0; 
+    }
+    .content { 
+      white-space: pre-wrap; 
+      word-wrap: break-word; 
+      line-height: 1.6;
+    }
+    .content-html {
+      line-height: 1.6;
+    }
+    .attachments-list {
+      color: #475569;
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="date">{{DATE}}</div>
+      <div class="header-row">
+        <span class="header-label">Von:</span>
+        <span class="header-value">{{FROM}}</span>
+      </div>
+      <div class="header-row">
+        <span class="header-label">Betreff:</span>
+        <span class="header-value subject">{{SUBJECT}}</span>
+      </div>
+      <div class="header-row">
+        <span class="header-label">An:</span>
+        <span class="header-value">{{TO}}</span>
+      </div>
+      {{CC_SECTION}}
+      {{BCC_SECTION}}
+      {{ATTACHMENTS_SECTION}}
+    </div>
+    <div class="separator"></div>
+    <div class="{{CONTENT_CLASS}}">{{CONTENT}}</div>
+  </div>
+</body>
+</html>

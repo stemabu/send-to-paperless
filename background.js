@@ -947,9 +947,23 @@ async function uploadEmailWithAttachments(messageData, emailPdfData, selectedAtt
   }
 }
 
-// Upload email as .eml file for Paperless Gotenberg conversion
-async function uploadEmailAsEml(messageData, selectedAttachments, direction, correspondent, tags, documentDate) {
-  console.log('📧 Starting EML upload (Paperless Gotenberg)');
+// Helper function for file size formatting
+function formatFileSize(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
+// Escape HTML to prevent XSS
+function escapeHtml(text) {
+  if (!text) return '';
+  const div = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
+  return String(text).replace(/[&<>"']/g, c => div[c]);
+}
+
+// Upload email as HTML file for Paperless Gotenberg conversion (better character encoding)
+async function uploadEmailAsHtml(messageData, selectedAttachments, direction, correspondent, tags, documentDate) {
+  console.log('📧 Starting HTML upload (Paperless Gotenberg)');
   console.log('📧 Message data:', JSON.stringify(messageData));
   console.log('📧 Direction:', direction);
   console.log('📧 Correspondent:', correspondent);
@@ -1032,72 +1046,129 @@ async function uploadEmailAsEml(messageData, selectedAttachments, direction, cor
       console.error('📧 Error getting/creating E-Mail-Anhang document type:', typeError);
     }
 
-    // Get .eml file from Thunderbird
-    console.log('📧 Getting .eml file from Thunderbird...');
-    let emlFile;
-    try {
-      emlFile = await browser.messages.getRaw(messageData.id);
-      if (!emlFile || emlFile.length === 0) {
-        throw new Error('E-Mail-Inhalt ist leer oder konnte nicht abgerufen werden');
-      }
-      console.log('📧 EML size:', emlFile.length, 'bytes');
-    } catch (emlError) {
-      console.error('📧 Error getting raw email:', emlError);
-      throw new Error(`E-Mail konnte nicht geladen werden: ${emlError.message}`);
+    // Get email body from Thunderbird
+    console.log('📧 Getting email body from Thunderbird...');
+    const fullMessage = await browser.messages.getFull(messageData.id);
+    const emailBodyData = extractEmailBody(fullMessage);
+    console.log('📧 Email body extracted, isHtml:', emailBodyData.isHtml, 'length:', emailBodyData.body?.length);
+
+    // Load HTML template
+    console.log('📧 Loading HTML template...');
+    const templateUrl = browser.runtime.getURL('email-template.html');
+    const templateResponse = await fetch(templateUrl);
+    let htmlTemplate = await templateResponse.text();
+    console.log('📧 HTML template loaded, length:', htmlTemplate.length);
+
+    // Format date for display
+    const dateStr = new Date(messageData.date).toLocaleString('de-DE', {
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit'
+    });
+
+    // Build recipients string
+    const toRecipients = (messageData.recipients || []).join(', ');
+
+    // Replace template placeholders
+    htmlTemplate = htmlTemplate
+      .replace('{{DATE}}', escapeHtml(dateStr))
+      .replace('{{FROM}}', escapeHtml(messageData.author || ''))
+      .replace('{{SUBJECT}}', escapeHtml(messageData.subject || 'Kein Betreff'))
+      .replace('{{TO}}', escapeHtml(toRecipients));
+
+    // Handle CC section (not currently available in messageData, leave empty)
+    htmlTemplate = htmlTemplate.replace('{{CC_SECTION}}', '');
+    
+    // Handle BCC section (not currently available in messageData, leave empty)
+    htmlTemplate = htmlTemplate.replace('{{BCC_SECTION}}', '');
+
+    // Handle attachments section
+    if (selectedAttachments && selectedAttachments.length > 0) {
+      const attachmentList = selectedAttachments.map(att => 
+        `${escapeHtml(att.name)} (${formatFileSize(att.size)})`
+      ).join(', ');
+      const attachSection = `
+        <div class="header-row">
+          <span class="header-label">Anhänge:</span>
+          <span class="header-value attachments-list">${attachmentList}</span>
+        </div>
+      `;
+      htmlTemplate = htmlTemplate.replace('{{ATTACHMENTS_SECTION}}', attachSection);
+    } else {
+      htmlTemplate = htmlTemplate.replace('{{ATTACHMENTS_SECTION}}', '');
     }
 
+    // Handle email body content
+    // If HTML content, use it directly (Gotenberg renders HTML well)
+    // If plain text, escape it and use pre-wrap styling
+    let contentHtml;
+    let contentClass;
+    if (emailBodyData.isHtml && emailBodyData.body) {
+      // Use HTML content directly - Gotenberg/Chromium will render it properly
+      contentHtml = emailBodyData.body;
+      contentClass = 'content-html';
+    } else {
+      // Plain text - escape and preserve whitespace
+      contentHtml = escapeHtml(emailBodyData.body || '');
+      contentClass = 'content';
+    }
+    htmlTemplate = htmlTemplate.replace('{{CONTENT}}', contentHtml);
+    htmlTemplate = htmlTemplate.replace('{{CONTENT_CLASS}}', contentClass);
+
     // Create filename
-    const dateStr = documentDate || new Date().toISOString().split('T')[0];
+    const fileDateStr = documentDate || new Date().toISOString().split('T')[0];
     const safeSubject = (messageData.subject || 'Kein_Betreff')
       .replace(/[^a-zA-Z0-9äöüÄÖÜß\s-]/g, '')
       .replace(/\s+/g, '_')
       .substring(0, 50);
-    const emlFilename = `${dateStr}_${safeSubject}.eml`;
-    console.log('📧 EML filename:', emlFilename);
+    const htmlFilename = `${fileDateStr}_${safeSubject}.html`;
+    console.log('📧 HTML filename:', htmlFilename);
 
-    // Upload .eml file
-    const emlBlob = new Blob([emlFile], { type: 'message/rfc822' });
-    const emlFormData = new FormData();
-    emlFormData.append('document', emlBlob, emlFilename);
-    emlFormData.append('title', safeSubject);
+    // Create HTML blob with UTF-8 encoding
+    const htmlBlob = new Blob([htmlTemplate], { type: 'text/html; charset=utf-8' });
+    console.log('📧 HTML blob size:', htmlBlob.size);
+
+    // Upload HTML file
+    const htmlFormData = new FormData();
+    htmlFormData.append('document', htmlBlob, htmlFilename);
+    htmlFormData.append('title', safeSubject);
     
     if (emailDocumentType && emailDocumentType.id) {
-      emlFormData.append('document_type', emailDocumentType.id);
+      htmlFormData.append('document_type', emailDocumentType.id);
     }
     if (documentDate) {
-      emlFormData.append('created', documentDate);
+      htmlFormData.append('created', documentDate);
     }
     if (correspondent) {
-      emlFormData.append('correspondent', correspondent);
+      htmlFormData.append('correspondent', correspondent);
     }
     if (tags && tags.length > 0) {
-      tags.forEach(tagId => emlFormData.append('tags', tagId));
+      tags.forEach(tagId => htmlFormData.append('tags', tagId));
     }
 
-    console.log('📧 Uploading .eml to Paperless...');
-    const emlResponse = await fetch(`${config.url}/api/documents/post_document/`, {
+    console.log('📧 Uploading HTML to Paperless...');
+    const htmlResponse = await fetch(`${config.url}/api/documents/post_document/`, {
       method: 'POST',
       headers: { 'Authorization': `Token ${config.token}` },
-      body: emlFormData
+      body: htmlFormData
     });
 
-    if (!emlResponse.ok) {
-      const errorText = await emlResponse.text();
-      console.error('📧 EML upload failed:', errorText);
-      throw new Error(`Upload failed (${emlResponse.status}): ${errorText}`);
+    if (!htmlResponse.ok) {
+      const errorText = await htmlResponse.text();
+      console.error('📧 HTML upload failed:', errorText);
+      throw new Error(`Upload failed (${htmlResponse.status}): ${errorText}`);
     }
 
     // Add tag to Thunderbird email
-    console.log('🏷️ Paperless-Tag: EML-Upload erfolgreich, füge Tag hinzu...');
+    console.log('🏷️ Paperless-Tag: HTML-Upload erfolgreich, füge Tag hinzu...');
     addPaperlessTagToEmail(messageData.id).catch(e =>
       console.warn("🏷️ Paperless-Tag: Fehler beim Taggen der E-Mail:", e)
     );
 
     // Wait for document processing
-    const emlTaskId = await emlResponse.text();
-    console.log('📧 EML upload task ID:', emlTaskId);
+    const htmlTaskId = await htmlResponse.text();
+    console.log('📧 HTML upload task ID:', htmlTaskId);
     console.log('📧 Waiting for Paperless to process (Gotenberg)...');
-    const emailDocId = await waitForDocumentId(config, emlTaskId.replace(/"/g, ''));
+    const emailDocId = await waitForDocumentId(config, htmlTaskId.replace(/"/g, ''));
     console.log('📧 Email document ID:', emailDocId);
 
     if (!emailDocId) {
@@ -1203,7 +1274,7 @@ async function uploadEmailAsEml(messageData, selectedAttachments, direction, cor
     }
 
     const totalDocs = 1 + attachmentDocIds.length;
-    console.log('📧 EML upload complete. Total documents:', totalDocs);
+    console.log('📧 HTML upload complete. Total documents:', totalDocs);
     showNotification(`✅ ${totalDocs} Dokument(e) hochgeladen (via Gotenberg)!`, "success");
 
     return {
@@ -1211,11 +1282,11 @@ async function uploadEmailAsEml(messageData, selectedAttachments, direction, cor
       emailDocId: emailDocId,
       attachmentDocIds: attachmentDocIds,
       attachmentErrors: attachmentErrors.length > 0 ? attachmentErrors : undefined,
-      strategy: 'eml'
+      strategy: 'html'
     };
 
   } catch (error) {
-    console.error("📧 ❌ EML upload error:", error);
+    console.error("📧 ❌ HTML upload error:", error);
     return {
       success: false,
       error: error.message || 'Unbekannter Fehler'
@@ -1561,12 +1632,12 @@ browser.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
     );
   }
 
-  // Handle email upload as .eml file (Paperless Gotenberg conversion)
-  if (message.action === "uploadEmailAsEml") {
+  // Handle email upload as HTML file (Paperless Gotenberg conversion - better character encoding)
+  if (message.action === "uploadEmailAsHtml" || message.action === "uploadEmailAsEml") {
     const { messageData, selectedAttachments, direction, correspondent, tags, documentDate } = message;
 
     // Return the Promise directly - the caller will receive the resolved value
-    return uploadEmailAsEml(
+    return uploadEmailAsHtml(
       messageData,
       selectedAttachments,
       direction,

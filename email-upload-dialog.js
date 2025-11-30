@@ -1106,11 +1106,11 @@ async function handleUpload(event) {
     let result;
 
     if (pdfStrategy === 'eml') {
-      // Upload email as .eml file for Paperless Gotenberg conversion
-      console.log('📤 Using EML upload strategy (Paperless Gotenberg)...');
+      // Upload email as HTML file for Paperless Gotenberg conversion (better character encoding)
+      console.log('📤 Using HTML upload strategy (Paperless Gotenberg)...');
       
       result = await browser.runtime.sendMessage({
-        action: 'uploadEmailAsEml',
+        action: 'uploadEmailAsHtml',
         messageData: currentMessage,
         selectedAttachments: selectedAttachments,
         direction: direction,
@@ -1153,7 +1153,7 @@ async function handleUpload(event) {
 
     if (result && result.success) {
       let successMsg = pdfStrategy === 'eml' 
-        ? 'E-Mail als .eml erfolgreich hochgeladen!'
+        ? 'E-Mail als HTML erfolgreich hochgeladen!'
         : 'E-Mail und Anhänge wurden erfolgreich an Paperless-ngx gesendet!';
       
       // Show warning if document is still processing
