@@ -13,6 +13,45 @@ const PAPERLESS_TAG_COLOR = "#007bff";
 let currentPdfAttachments = [];
 let currentMessage = null;
 
+// Helper function to move From header to beginning of EML content for libmagic compatibility
+// This is a workaround for libmagic not recognizing message/rfc822 when From is not at the start
+// See: Paperless-ngx mail.py lines 916-933
+function ensureFromHeaderAtBeginning(emlContent) {
+  console.log('📧 Processing EML for libmagic compatibility');
+  
+  let emlString;
+  if (typeof emlContent === 'string') {
+    emlString = emlContent;
+  } else {
+    const decoder = new TextDecoder('utf-8');
+    emlString = decoder.decode(emlContent);
+  }
+  
+  const lines = emlString.split(/\r?\n/);
+  
+  let fromIndex = -1;
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].trim().toLowerCase().startsWith('from:')) {
+      fromIndex = i;
+      break;
+    }
+  }
+  
+  if (fromIndex > 0) {
+    console.log('📧 Moving From header to beginning (was at line ' + fromIndex + ')');
+    const fromLine = lines.splice(fromIndex, 1)[0];
+    lines.unshift(fromLine);
+    emlString = lines.join('\n');
+  } else if (fromIndex === 0) {
+    console.log('📧 From header already at beginning');
+  } else {
+    console.log('📧 No From header found in EML');
+  }
+  
+  const encoder = new TextEncoder();
+  return encoder.encode(emlString);
+}
+
 // Create context menus for attachments
 browser.runtime.onInstalled.addListener(async () => {
   // Remove all existing menus first to avoid conflicts
@@ -1298,6 +1337,291 @@ async function uploadEmailAsHtml(messageData, selectedAttachments, direction, co
   }
 }
 
+// Upload email as .eml file for Paperless-ngx with libmagic compatibility
+// Uses the From-header-first workaround for correct MIME type detection
+async function uploadEmailAsEml(messageData, selectedAttachments, direction, correspondent, tags, documentDate) {
+  console.log('📧 Starting EML upload (native format)');
+  console.log('📧 Message data:', JSON.stringify(messageData));
+  console.log('📧 Direction:', direction);
+  console.log('📧 Correspondent:', correspondent);
+  console.log('📧 Tags:', tags);
+  console.log('📧 Document Date:', documentDate);
+  console.log('📧 Selected attachments count:', selectedAttachments?.length);
+  
+  // Get configuration
+  console.log('📧 Getting Paperless configuration...');
+  const config = await getPaperlessConfig();
+  
+  if (!config.url || !config.token) {
+    const errorMsg = "Paperless-ngx ist nicht konfiguriert. Bitte Einstellungen prüfen.";
+    console.error('📧 Configuration error:', errorMsg);
+    return {
+      success: false,
+      error: errorMsg
+    };
+  }
+  console.log('📧 Configuration OK, URL:', config.url);
+
+  try {
+    // Get or create custom fields
+    console.log('📧 Getting/creating custom fields...');
+    
+    let relatedDocsField;
+    try {
+      relatedDocsField = await getOrCreateCustomField(
+        config,
+        'Dazugehörende Dokumente',
+        'documentlink'
+      );
+      console.log('📧 Related docs field:', relatedDocsField);
+    } catch (fieldError) {
+      console.error('📧 Error getting/creating related docs field:', fieldError);
+      throw new Error('Fehler beim Erstellen des Custom Fields "Dazugehörende Dokumente": ' + fieldError.message);
+    }
+
+    let directionField;
+    try {
+      directionField = await getOrCreateCustomField(
+        config,
+        'Richtung',
+        'select',
+        ['Eingang', 'Ausgang', 'Intern']
+      );
+      console.log('📧 Direction field:', directionField);
+    } catch (fieldError) {
+      console.error('📧 Error getting/creating direction field:', fieldError);
+      throw new Error('Fehler beim Erstellen des Custom Fields "Richtung": ' + fieldError.message);
+    }
+
+    // Find the option ID for the selected direction
+    let directionOptionId = null;
+    if (directionField.extra_data && directionField.extra_data.select_options) {
+      const options = directionField.extra_data.select_options;
+      const directionTrimmed = direction.trim();
+      const matchingOption = options.find(opt => opt.label && opt.label.trim() === directionTrimmed);
+      if (matchingOption) {
+        directionOptionId = matchingOption.id;
+        console.log(`📧 Found direction option ID for "${direction}": ${directionOptionId}`);
+      }
+    }
+
+    // Get or create document types
+    let emailDocumentType;
+    let attachmentDocumentType;
+    
+    try {
+      emailDocumentType = await getOrCreateDocumentType(config, 'E-Mail');
+      console.log(`📧 Setting document type to: ${emailDocumentType.id} (E-Mail)`);
+    } catch (typeError) {
+      console.error('📧 Error getting/creating E-Mail document type:', typeError);
+    }
+    
+    try {
+      attachmentDocumentType = await getOrCreateDocumentType(config, 'E-Mail-Anhang');
+      console.log(`📧 Setting document type to: ${attachmentDocumentType.id} (E-Mail-Anhang)`);
+    } catch (typeError) {
+      console.error('📧 Error getting/creating E-Mail-Anhang document type:', typeError);
+    }
+
+    // Get .eml file from Thunderbird
+    console.log('📧 Getting .eml file from Thunderbird...');
+    let emlFile;
+    try {
+      emlFile = await browser.messages.getRaw(messageData.id);
+      if (!emlFile || emlFile.length === 0) {
+        throw new Error('E-Mail-Inhalt ist leer');
+      }
+      console.log('📧 Raw EML size:', emlFile.length, 'bytes');
+      
+      // WORKAROUND: Move From-header to beginning for libmagic
+      emlFile = ensureFromHeaderAtBeginning(emlFile);
+      console.log('📧 Processed EML size:', emlFile.length, 'bytes');
+      
+    } catch (emlError) {
+      console.error('📧 Error getting raw email:', emlError);
+      throw new Error(`E-Mail konnte nicht geladen werden: ${emlError.message}`);
+    }
+
+    // Create filename
+    const dateStr = documentDate || new Date().toISOString().split('T')[0];
+    const safeSubject = (messageData.subject || 'Kein_Betreff')
+      .replace(/[^a-zA-Z0-9äöüÄÖÜß\s-]/g, '')
+      .replace(/\s+/g, '_')
+      .substring(0, 50);
+    const emlFilename = `${dateStr}_${safeSubject}.eml`;
+    console.log('📧 EML filename:', emlFilename);
+
+    // IMPORTANT: No MIME type - let Paperless detect it with libmagic
+    const emlBlob = new Blob([emlFile]);
+    console.log('📧 EML blob size:', emlBlob.size);
+
+    // Upload EML file
+    const emlFormData = new FormData();
+    emlFormData.append('document', emlBlob, emlFilename);
+    emlFormData.append('title', safeSubject);
+    
+    if (emailDocumentType && emailDocumentType.id) {
+      emlFormData.append('document_type', emailDocumentType.id);
+    }
+    if (documentDate) {
+      emlFormData.append('created', documentDate);
+    }
+    if (correspondent) {
+      emlFormData.append('correspondent', correspondent);
+    }
+    if (tags && tags.length > 0) {
+      tags.forEach(tagId => emlFormData.append('tags', tagId));
+    }
+
+    console.log('📧 Uploading EML to Paperless...');
+    const emlResponse = await fetch(`${config.url}/api/documents/post_document/`, {
+      method: 'POST',
+      headers: { 'Authorization': `Token ${config.token}` },
+      body: emlFormData
+    });
+
+    if (!emlResponse.ok) {
+      const errorText = await emlResponse.text();
+      console.error('📧 EML upload failed:', errorText);
+      throw new Error(`Upload failed (${emlResponse.status}): ${errorText}`);
+    }
+
+    // Add tag to Thunderbird email
+    console.log('🏷️ Paperless-Tag: EML-Upload erfolgreich, füge Tag hinzu...');
+    addPaperlessTagToEmail(messageData.id).catch(e =>
+      console.warn("🏷️ Paperless-Tag: Fehler beim Taggen der E-Mail:", e)
+    );
+
+    // Wait for document processing
+    const emlTaskId = await emlResponse.text();
+    console.log('📧 EML upload task ID:', emlTaskId);
+    console.log('📧 Waiting for Paperless to process (MailDocumentParser)...');
+    const emailDocId = await waitForDocumentId(config, emlTaskId.replace(/"/g, ''));
+    console.log('📧 Email document ID:', emailDocId);
+
+    if (!emailDocId) {
+      console.warn('📧 ⚠️ Email document ID not found after waiting');
+      return {
+        success: true,
+        warning: 'Dokument hochgeladen, wird noch verarbeitet. Bitte später im Paperless-System prüfen.'
+      };
+    }
+
+    // Upload attachments
+    console.log('📧 Starting attachment uploads, count:', selectedAttachments?.length || 0);
+    const attachmentDocIds = [];
+    const attachmentErrors = [];
+    
+    for (const attachment of selectedAttachments || []) {
+      console.log('📎 Processing attachment:', attachment.name);
+      
+      try {
+        const attachmentFile = await browser.messages.getAttachmentFile(
+          messageData.id,
+          attachment.partName
+        );
+        
+        if (!attachmentFile || attachmentFile.size === 0) {
+          throw new Error(`Anhang '${attachment.name}' ist leer oder konnte nicht gelesen werden`);
+        }
+
+        const attachmentFormData = new FormData();
+        attachmentFormData.append('document', attachmentFile, attachment.name);
+        attachmentFormData.append('title', attachment.name.replace(/\.[^/.]+$/, ''));
+        
+        if (attachmentDocumentType && attachmentDocumentType.id) {
+          attachmentFormData.append('document_type', attachmentDocumentType.id);
+        }
+        if (documentDate) {
+          attachmentFormData.append('created', documentDate);
+        }
+        if (correspondent) {
+          attachmentFormData.append('correspondent', correspondent);
+        }
+        if (tags && tags.length > 0) {
+          tags.forEach(tagId => attachmentFormData.append('tags', tagId));
+        }
+
+        const attachmentResponse = await fetch(`${config.url}/api/documents/post_document/`, {
+          method: 'POST',
+          headers: { 'Authorization': `Token ${config.token}` },
+          body: attachmentFormData
+        });
+
+        if (!attachmentResponse.ok) {
+          attachmentErrors.push(`${attachment.name}: Upload failed`);
+          continue;
+        }
+
+        const attachmentTaskId = await attachmentResponse.text();
+        const attachmentDocId = await waitForDocumentId(config, attachmentTaskId.replace(/"/g, ''));
+
+        if (attachmentDocId) {
+          attachmentDocIds.push(attachmentDocId);
+          console.log('📎 Attachment successfully uploaded:', attachment.name);
+        } else {
+          attachmentErrors.push(`${attachment.name}: ID nicht gefunden`);
+        }
+      } catch (error) {
+        console.error('📎 Error uploading attachment:', attachment.name, error);
+        attachmentErrors.push(`${attachment.name}: ${error.message}`);
+      }
+    }
+
+    // Update custom fields
+    console.log('📧 Updating custom fields...');
+    
+    try {
+      const emailCustomFields = [];
+      if (directionOptionId) {
+        emailCustomFields.push({ field: directionField.id, value: String(directionOptionId) });
+      }
+      if (attachmentDocIds.length > 0) {
+        emailCustomFields.push({ field: relatedDocsField.id, value: attachmentDocIds });
+      }
+      if (emailCustomFields.length > 0) {
+        await updateDocumentCustomFields(config, emailDocId, emailCustomFields);
+        console.log('📧 Email custom fields updated');
+      }
+    } catch (error) {
+      console.error('📧 Custom field update error:', error);
+    }
+
+    // Update attachment custom fields
+    for (const attachmentDocId of attachmentDocIds) {
+      try {
+        const attachmentCustomFields = [];
+        if (directionOptionId) {
+          attachmentCustomFields.push({ field: directionField.id, value: String(directionOptionId) });
+        }
+        attachmentCustomFields.push({ field: relatedDocsField.id, value: [emailDocId] });
+        await updateDocumentCustomFields(config, attachmentDocId, attachmentCustomFields);
+      } catch (error) {
+        console.error('📧 Attachment field update error:', error);
+      }
+    }
+
+    const totalDocs = 1 + attachmentDocIds.length;
+    console.log('📧 EML upload complete. Total documents:', totalDocs);
+    showNotification(`✅ ${totalDocs} Dokument(e) hochgeladen (via MailDocumentParser)!`, "success");
+
+    return {
+      success: true,
+      emailDocId: emailDocId,
+      attachmentDocIds: attachmentDocIds,
+      attachmentErrors: attachmentErrors.length > 0 ? attachmentErrors : undefined,
+      strategy: 'eml'
+    };
+
+  } catch (error) {
+    console.error("📧 ❌ EML upload error:", error);
+    return {
+      success: false,
+      error: error.message || 'Unbekannter Fehler'
+    };
+  }
+}
+
 // Wait for document to be processed and return the document ID
 // Polls the Paperless-ngx tasks API until the document is processed or timeout occurs
 async function waitForDocumentId(config, taskId, maxAttempts = DOCUMENT_PROCESSING_MAX_ATTEMPTS, delayMs = DOCUMENT_PROCESSING_DELAY_MS) {
@@ -1637,11 +1961,26 @@ browser.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
   }
 
   // Handle email upload as HTML file (Paperless Gotenberg conversion - better character encoding)
-  if (message.action === "uploadEmailAsHtml" || message.action === "uploadEmailAsEml") {
+  if (message.action === "uploadEmailAsHtml") {
     const { messageData, selectedAttachments, direction, correspondent, tags, documentDate } = message;
 
     // Return the Promise directly - the caller will receive the resolved value
     return uploadEmailAsHtml(
+      messageData,
+      selectedAttachments,
+      direction,
+      correspondent,
+      tags,
+      documentDate
+    );
+  }
+
+  // Handle email upload as EML file (native format with libmagic compatibility)
+  if (message.action === "uploadEmailAsEml") {
+    const { messageData, selectedAttachments, direction, correspondent, tags, documentDate } = message;
+
+    // Return the Promise directly - the caller will receive the resolved value
+    return uploadEmailAsEml(
       messageData,
       selectedAttachments,
       direction,
