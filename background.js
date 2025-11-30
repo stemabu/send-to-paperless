@@ -1433,7 +1433,10 @@ async function uploadEmailAsEml(messageData, selectedAttachments, direction, cor
       }
       console.log('📧 Raw EML size:', emlFile.length, 'bytes');
       
-      // WORKAROUND: Move From-header to beginning for libmagic
+      // WORKAROUND for libmagic MIME-type detection:
+      // libmagic often fails to recognize message/rfc822 when From: is not at the start.
+      // Moving the From-header to the beginning ensures correct detection.
+      // See: Paperless-ngx mail.py lines 916-933
       emlFile = ensureFromHeaderAtBeginning(emlFile);
       console.log('📧 Processed EML size:', emlFile.length, 'bytes');
       
@@ -1451,7 +1454,9 @@ async function uploadEmailAsEml(messageData, selectedAttachments, direction, cor
     const emlFilename = `${dateStr}_${safeSubject}.eml`;
     console.log('📧 EML filename:', emlFilename);
 
-    // IMPORTANT: No MIME type - let Paperless detect it with libmagic
+    // IMPORTANT: Do not specify MIME type in Blob constructor.
+    // This allows Paperless to use libmagic for detection, which will now
+    // correctly identify message/rfc822 thanks to the From-header workaround.
     const emlBlob = new Blob([emlFile]);
     console.log('📧 EML blob size:', emlBlob.size);
 
