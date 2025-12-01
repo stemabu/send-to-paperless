@@ -19,13 +19,8 @@ let currentMessage = null;
 function ensureFromHeaderAtBeginning(emlContent) {
   console.log('📧 Processing EML for libmagic compatibility');
   
-  let emlString;
-  if (typeof emlContent === 'string') {
-    emlString = emlContent;
-  } else {
-    const decoder = new TextDecoder('utf-8');
-    emlString = decoder.decode(emlContent);
-  }
+  // browser.messages.getRaw() returns a string, not an ArrayBuffer
+  let emlString = emlContent;
   
   const lines = emlString.split(/\r?\n/);
   
@@ -38,7 +33,7 @@ function ensureFromHeaderAtBeginning(emlContent) {
   }
   
   if (fromIndex > 0) {
-    console.log('📧 Moving From header to beginning (was at line ' + fromIndex + ')');
+    console.log('📧 Moving From header to beginning (was at line ' + (fromIndex + 1) + ')');
     const fromLine = lines.splice(fromIndex, 1)[0];
     lines.unshift(fromLine);
     emlString = lines.join('\n');
@@ -48,8 +43,8 @@ function ensureFromHeaderAtBeginning(emlContent) {
     console.log('📧 No From header found in EML');
   }
   
-  const encoder = new TextEncoder();
-  return encoder.encode(emlString);
+  // Return string directly - Blob constructor can handle strings
+  return emlString;
 }
 
 // Create context menus for attachments
