@@ -1444,7 +1444,6 @@ async function uploadEmailAsEml(messageData, selectedAttachments, direction, cor
 
     // Get .eml file from Thunderbird - always fetch fresh without caching
     console.log('📧 Getting .eml file from Thunderbird for message ID:', messageData.id);
-    let emlFile;
     let emlContent;
     try {
       // Force fresh fetch by calling getRaw directly each time
@@ -1456,9 +1455,15 @@ async function uploadEmailAsEml(messageData, selectedAttachments, direction, cor
       
       console.log('📧 Raw EML size:', rawContent.length, 'bytes');
       console.log('📧 Raw EML type:', typeof rawContent);
-      console.log('📧 Raw EML first 200 chars:', 
-        (typeof rawContent === 'string' ? rawContent : UTF8_DECODER.decode(rawContent.slice(0, 200))).substring(0, 200)
-      );
+      // Use 400 bytes buffer to avoid cutting multi-byte UTF-8 characters
+      try {
+        const previewChars = typeof rawContent === 'string' 
+          ? rawContent.substring(0, 200)
+          : UTF8_DECODER.decode(rawContent.slice(0, 400)).substring(0, 200);
+        console.log('📧 Raw EML first 200 chars:', previewChars);
+      } catch (previewError) {
+        console.log('📧 Raw EML preview failed (encoding issue):', previewError.message);
+      }
       
       // WORKAROUND for libmagic MIME-type detection:
       // libmagic often fails to recognize message/rfc822 when From: is not at the start.
@@ -1469,9 +1474,6 @@ async function uploadEmailAsEml(messageData, selectedAttachments, direction, cor
       console.log('📧 Processed EML size:', emlContent.length, 'bytes');
       console.log('📧 Processed EML type:', typeof emlContent);
       console.log('📧 Processed EML first 200 chars:', emlContent.substring(0, 200));
-      
-      // Assign to emlFile for compatibility with rest of function
-      emlFile = emlContent;
       
     } catch (emlError) {
       console.error('📧 Error getting raw email:', emlError);
@@ -1490,7 +1492,7 @@ async function uploadEmailAsEml(messageData, selectedAttachments, direction, cor
     // IMPORTANT: Do not specify MIME type in Blob constructor.
     // This allows Paperless to use libmagic for detection, which will now
     // correctly identify message/rfc822 thanks to the From-header workaround.
-    const emlBlob = new Blob([emlFile]);
+    const emlBlob = new Blob([emlContent]);
     console.log('📧 EML blob size:', emlBlob.size);
 
     // Upload EML file
