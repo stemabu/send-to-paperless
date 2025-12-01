@@ -13,14 +13,27 @@ const PAPERLESS_TAG_COLOR = "#007bff";
 let currentPdfAttachments = [];
 let currentMessage = null;
 
+// Reusable TextDecoder for efficient decoding of ArrayBuffer/TypedArray
+const UTF8_DECODER = new TextDecoder('utf-8');
+
 // Helper function to move From header to beginning of EML content for libmagic compatibility
 // This is a workaround for libmagic not recognizing message/rfc822 when From is not at the start
 // See: Paperless-ngx mail.py lines 916-933
 function ensureFromHeaderAtBeginning(emlContent) {
   console.log('📧 Processing EML for libmagic compatibility');
   
-  // browser.messages.getRaw() returns a string, not an ArrayBuffer
-  let emlString = emlContent;
+  let emlString;
+  if (typeof emlContent === 'string') {
+    // Already a string
+    emlString = emlContent;
+  } else if (emlContent instanceof ArrayBuffer || ArrayBuffer.isView(emlContent)) {
+    // Thunderbird 140+ returns ArrayBuffer or Uint8Array from getRaw()
+    emlString = UTF8_DECODER.decode(emlContent);
+  } else {
+    // Fallback: try to convert to string
+    console.warn('📧 Unexpected emlContent type:', typeof emlContent);
+    emlString = String(emlContent);
+  }
   
   const lines = emlString.split(/\r?\n/);
   
@@ -44,6 +57,7 @@ function ensureFromHeaderAtBeginning(emlContent) {
   }
   
   // Return string directly - Blob constructor can handle strings
+  // Do NOT use TextEncoder here - not needed for Blob constructor
   return emlString;
 }
 
