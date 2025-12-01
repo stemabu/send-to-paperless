@@ -1185,13 +1185,15 @@ async function uploadEmailAsHtml(messageData, selectedAttachments, direction, co
     const htmlFilename = `${fileDateStr}_${safeSubject}.html`;
     console.log('📧 HTML filename:', htmlFilename);
 
-    // Create HTML blob - UTF-8 encoding is handled automatically by the browser
+    // Create HTML blob and convert to File for proper FormData serialization
+    // Note: Using File instead of Blob ensures correct content transmission in all browser environments
     const htmlBlob = new Blob([htmlTemplate], { type: 'text/html' });
-    console.log('📧 HTML blob size:', htmlBlob.size);
+    const htmlFile = new File([htmlBlob], htmlFilename, { type: 'text/html' });
+    console.log('📧 HTML file size:', htmlFile.size);
 
     // Upload HTML file
     const htmlFormData = new FormData();
-    htmlFormData.append('document', htmlBlob, htmlFilename);
+    htmlFormData.append('document', htmlFile);
     htmlFormData.append('title', safeSubject);
     
     if (emailDocumentType && emailDocumentType.id) {
@@ -1489,15 +1491,17 @@ async function uploadEmailAsEml(messageData, selectedAttachments, direction, cor
     const emlFilename = `${dateStr}_${safeSubject}.eml`;
     console.log('📧 EML filename:', emlFilename);
 
-    // IMPORTANT: Do not specify MIME type in Blob constructor.
+    // IMPORTANT: Do not specify MIME type in Blob/File constructor.
     // This allows Paperless to use libmagic for detection, which will now
     // correctly identify message/rfc822 thanks to the From-header workaround.
+    // Note: Using File instead of Blob ensures correct content transmission in all browser environments
     const emlBlob = new Blob([emlContent]);
-    console.log('📧 EML blob size:', emlBlob.size);
+    const emlFile = new File([emlBlob], emlFilename);
+    console.log('📧 EML file size:', emlFile.size);
 
     // Upload EML file
     const emlFormData = new FormData();
-    emlFormData.append('document', emlBlob, emlFilename);
+    emlFormData.append('document', emlFile);
     emlFormData.append('title', safeSubject);
     
     if (emailDocumentType && emailDocumentType.id) {
