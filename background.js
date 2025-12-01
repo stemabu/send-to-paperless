@@ -1020,6 +1020,50 @@ function escapeHtml(text) {
   return String(text).replace(/[&<>"']/g, c => div[c]);
 }
 
+// Sanitize HTML content for safe rendering in Gotenberg
+// Removes dangerous elements and attributes using regex-based approach
+// (background scripts don't have DOM access)
+function sanitizeHtmlForGotenberg(html) {
+  if (!html) return '';
+  
+  console.log('📧 Sanitizing HTML for Gotenberg, original length:', html.length);
+  
+  let sanitized = html;
+  
+  // 1. Remove script tags and their content
+  sanitized = sanitized.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
+  
+  // 2. Remove style tags (we'll add our own styles)
+  // Note: Keep inline styles but remove style blocks
+  sanitized = sanitized.replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '');
+  
+  // 3. Remove dangerous tags
+  const dangerousTags = ['iframe', 'frame', 'frameset', 'object', 'embed', 'applet', 'form', 'input', 'button', 'select', 'textarea'];
+  dangerousTags.forEach(tag => {
+    // Remove self-closing and opening tags
+    sanitized = sanitized.replace(new RegExp(`<${tag}\\b[^>]*\\/?>`, 'gi'), '');
+    // Remove closing tags
+    sanitized = sanitized.replace(new RegExp(`<\\/${tag}>`, 'gi'), '');
+  });
+  
+  // 4. Remove event handlers (on* attributes)
+  sanitized = sanitized.replace(/\s+on\w+\s*=\s*["'][^"']*["']/gi, '');
+  sanitized = sanitized.replace(/\s+on\w+\s*=\s*[^\s>]+/gi, '');
+  
+  // 5. Remove javascript: and vbscript: URLs in href and src attributes
+  sanitized = sanitized.replace(/href\s*=\s*["']?\s*javascript:[^"'\s>]*/gi, 'href="#"');
+  sanitized = sanitized.replace(/href\s*=\s*["']?\s*vbscript:[^"'\s>]*/gi, 'href="#"');
+  sanitized = sanitized.replace(/src\s*=\s*["']?\s*javascript:[^"'\s>]*/gi, 'src=""');
+  sanitized = sanitized.replace(/src\s*=\s*["']?\s*vbscript:[^"'\s>]*/gi, 'src=""');
+  
+  // 6. Remove data: URLs in src attributes (can contain embedded scripts)
+  sanitized = sanitized.replace(/src\s*=\s*["']?\s*data:[^"'\s>]*/gi, 'src=""');
+  
+  console.log('📧 Sanitized HTML length:', sanitized.length);
+  
+  return sanitized;
+}
+
 // Create HTML template for email (for Gotenberg conversion)
 // Based on Paperless-ngx email_msg_template.html but simplified with inline CSS
 function createEmailHtml(messageData, emailBodyData, selectedAttachments) {
@@ -1033,9 +1077,9 @@ function createEmailHtml(messageData, emailBodyData, selectedAttachments) {
   // Prepare content - HTML or plain text
   let contentHtml;
   if (emailBodyData.isHtml && emailBodyData.body) {
-    // Use HTML content directly - Gotenberg/Chromium will render it properly
-    // The email body comes from Thunderbird's trusted message parsing API
-    contentHtml = emailBodyData.body;
+    // Sanitize HTML content to remove dangerous elements before rendering
+    // This protects against malicious HTML/JavaScript in email bodies
+    contentHtml = sanitizeHtmlForGotenberg(emailBodyData.body);
   } else {
     // Plain text - escape and preserve whitespace
     contentHtml = `<pre style="white-space: pre-wrap; word-wrap: break-word; font-family: inherit; margin: 0;">${escapeHtml(emailBodyData.body || '')}</pre>`;
@@ -1158,6 +1202,8 @@ async function convertEmailToPdfViaGotenberg(messageData, emailBodyData, selecte
   formData.append('files', htmlFile);
   
   // POST to Gotenberg's Chromium HTML conversion endpoint
+  // This endpoint is the standard Gotenberg API path for HTML to PDF conversion
+  // Compatible with Gotenberg v7+ (https://gotenberg.dev/docs/routes#html-file-into-pdf-route)
   const gotenbergEndpoint = `${gotenbergUrl}/forms/chromium/convert/html`;
   console.log('📧 Calling Gotenberg endpoint:', gotenbergEndpoint);
   
