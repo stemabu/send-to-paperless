@@ -1076,9 +1076,9 @@ async function handleUpload(event) {
     clearMessages();
 
     const direction = document.getElementById('direction').value;
-    // Checkbox: checked = local, unchecked = eml (Paperless/Gotenberg)
+    // Checkbox: checked = local PDF, unchecked = Gotenberg (direct API call)
     const pdfStrategyCheckbox = document.getElementById('pdfStrategy');
-    const pdfStrategy = pdfStrategyCheckbox.checked ? 'local' : 'eml';
+    const pdfStrategy = pdfStrategyCheckbox.checked ? 'local' : 'gotenberg';
     const selectedAttachments = getSelectedAttachments();
 
     // Get correspondent
@@ -1105,12 +1105,12 @@ async function handleUpload(event) {
 
     let result;
 
-    if (pdfStrategy === 'eml') {
-      // Upload email as .eml file (native format with libmagic compatibility)
-      console.log('📤 Using EML upload strategy (native format)...');
+    if (pdfStrategy === 'gotenberg') {
+      // Upload email via direct Gotenberg API call (HTML → PDF)
+      console.log('📤 Using Gotenberg upload strategy (direct API call)...');
       
       result = await browser.runtime.sendMessage({
-        action: 'uploadEmailAsEml',
+        action: 'uploadEmailAsHtml',
         messageData: currentMessage,
         selectedAttachments: selectedAttachments,
         direction: direction,
@@ -1152,8 +1152,8 @@ async function handleUpload(event) {
     console.log('📤 Received result from background:', JSON.stringify(result));
 
     if (result && result.success) {
-      let successMsg = pdfStrategy === 'eml' 
-        ? 'E-Mail als EML erfolgreich hochgeladen!'
+      let successMsg = pdfStrategy === 'gotenberg' 
+        ? 'E-Mail via Gotenberg erfolgreich hochgeladen!'
         : 'E-Mail und Anhänge wurden erfolgreich an Paperless-ngx gesendet!';
       
       // Show warning if document is still processing

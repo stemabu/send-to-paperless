@@ -1020,9 +1020,168 @@ function escapeHtml(text) {
   return String(text).replace(/[&<>"']/g, c => div[c]);
 }
 
+// Create HTML template for email (for Gotenberg conversion)
+// Based on Paperless-ngx email_msg_template.html but simplified with inline CSS
+function createEmailHtml(messageData, emailBodyData, selectedAttachments) {
+  const dateStr = new Date(messageData.date).toLocaleString('de-DE', {
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit'
+  });
+  
+  const toRecipients = (messageData.recipients || []).join(', ');
+  
+  // Prepare content - HTML or plain text
+  let contentHtml;
+  if (emailBodyData.isHtml && emailBodyData.body) {
+    // Use HTML content directly - Gotenberg/Chromium will render it properly
+    // The email body comes from Thunderbird's trusted message parsing API
+    contentHtml = emailBodyData.body;
+  } else {
+    // Plain text - escape and preserve whitespace
+    contentHtml = `<pre style="white-space: pre-wrap; word-wrap: break-word; font-family: inherit; margin: 0;">${escapeHtml(emailBodyData.body || '')}</pre>`;
+  }
+  
+  // Build attachments section if any
+  let attachmentsSection = '';
+  if (selectedAttachments && selectedAttachments.length > 0) {
+    const attachmentList = selectedAttachments.map(att => 
+      `${escapeHtml(att.name)} (${formatFileSize(att.size)})`
+    ).join(', ');
+    attachmentsSection = `
+      <div class="header-row">
+        <span class="header-label">Anhänge:</span>
+        <span class="header-value attachments-list">${attachmentList}</span>
+      </div>
+    `;
+  }
+  
+  return `<!doctype html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+      margin: 20px;
+      background: white;
+      color: #1a1a1a;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+    }
+    .header {
+      background: #e2e8f0;
+      padding: 20px;
+      margin-bottom: 20px;
+      border-radius: 4px;
+    }
+    .header-row {
+      margin: 8px 0;
+      display: flex;
+    }
+    .header-label {
+      color: #64748b;
+      min-width: 80px;
+      text-align: right;
+      padding-right: 12px;
+      font-weight: 500;
+    }
+    .header-value {
+      flex: 1;
+      word-break: break-word;
+    }
+    .subject {
+      font-weight: bold;
+    }
+    .date {
+      color: #64748b;
+      float: right;
+      font-size: 13px;
+    }
+    .separator {
+      border-top: 1px solid #cbd5e1;
+      margin: 20px 0;
+    }
+    .content {
+      word-wrap: break-word;
+      overflow-wrap: break-word;
+      line-height: 1.6;
+    }
+    .attachments-list {
+      color: #475569;
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="date">${escapeHtml(dateStr)}</div>
+      <div class="header-row">
+        <span class="header-label">Von:</span>
+        <span class="header-value">${escapeHtml(messageData.author || '')}</span>
+      </div>
+      <div class="header-row">
+        <span class="header-label">Betreff:</span>
+        <span class="header-value subject">${escapeHtml(messageData.subject || 'Kein Betreff')}</span>
+      </div>
+      <div class="header-row">
+        <span class="header-label">An:</span>
+        <span class="header-value">${escapeHtml(toRecipients)}</span>
+      </div>
+      ${attachmentsSection}
+    </div>
+    <div class="separator"></div>
+    <div class="content">
+      ${contentHtml}
+    </div>
+  </div>
+</body>
+</html>`;
+}
+
+// Convert email to PDF via Gotenberg HTTP API
+// Gotenberg provides HTML to PDF conversion via Chromium
+async function convertEmailToPdfViaGotenberg(messageData, emailBodyData, selectedAttachments, gotenbergUrl) {
+  console.log('📧 Converting email to PDF via Gotenberg:', gotenbergUrl);
+  
+  // Create HTML content
+  const htmlContent = createEmailHtml(messageData, emailBodyData, selectedAttachments);
+  console.log('📧 HTML content created, length:', htmlContent.length);
+  
+  // Create FormData for Gotenberg
+  const formData = new FormData();
+  const htmlFile = new File([htmlContent], 'email.html', { type: 'text/html' });
+  formData.append('files', htmlFile);
+  
+  // POST to Gotenberg's Chromium HTML conversion endpoint
+  const gotenbergEndpoint = `${gotenbergUrl}/forms/chromium/convert/html`;
+  console.log('📧 Calling Gotenberg endpoint:', gotenbergEndpoint);
+  
+  const response = await fetch(gotenbergEndpoint, {
+    method: 'POST',
+    body: formData
+  });
+  
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error('📧 Gotenberg conversion failed:', response.status, errorText);
+    throw new Error(`Gotenberg-Konvertierung fehlgeschlagen (HTTP ${response.status}): ${errorText}`);
+  }
+  
+  const pdfBlob = await response.blob();
+  console.log('📧 Gotenberg PDF received, size:', pdfBlob.size);
+  
+  return pdfBlob;
+}
+
 // Upload email as HTML file for Paperless Gotenberg conversion (better character encoding)
+// Now uses direct Gotenberg API call instead of relying on Paperless internal Gotenberg
 async function uploadEmailAsHtml(messageData, selectedAttachments, direction, correspondent, tags, documentDate) {
-  console.log('📧 Starting HTML upload (Paperless Gotenberg)');
+  console.log('📧 Starting HTML upload (Direct Gotenberg)');
   console.log('📧 Message data:', JSON.stringify(messageData));
   console.log('📧 Direction:', direction);
   console.log('📧 Correspondent:', correspondent);
@@ -1030,7 +1189,20 @@ async function uploadEmailAsHtml(messageData, selectedAttachments, direction, co
   console.log('📧 Document Date:', documentDate);
   console.log('📧 Selected attachments count:', selectedAttachments?.length);
   
-  // Get configuration
+  // Get Gotenberg URL from settings
+  const gotenbergResult = await browser.storage.sync.get(['gotenbergUrl']);
+  const gotenbergUrl = gotenbergResult.gotenbergUrl;
+  
+  if (!gotenbergUrl) {
+    console.error('📧 Gotenberg URL not configured');
+    return {
+      success: false,
+      error: 'Gotenberg URL nicht konfiguriert. Bitte in den Einstellungen angeben.'
+    };
+  }
+  console.log('📧 Gotenberg URL:', gotenbergUrl);
+  
+  // Get Paperless configuration
   console.log('📧 Getting Paperless configuration...');
   const config = await getPaperlessConfig();
   
@@ -1111,128 +1283,74 @@ async function uploadEmailAsHtml(messageData, selectedAttachments, direction, co
     const emailBodyData = extractEmailBody(fullMessage);
     console.log('📧 Email body extracted, isHtml:', emailBodyData.isHtml, 'length:', emailBodyData.body?.length);
 
-    // Load HTML template
-    console.log('📧 Loading HTML template...');
-    const templateUrl = browser.runtime.getURL('email-template.html');
-    const templateResponse = await fetch(templateUrl);
-    let htmlTemplate = await templateResponse.text();
-    console.log('📧 HTML template loaded, length:', htmlTemplate.length);
-
-    // Format date for display
-    const dateStr = new Date(messageData.date).toLocaleString('de-DE', {
-      year: 'numeric', month: '2-digit', day: '2-digit',
-      hour: '2-digit', minute: '2-digit'
-    });
-
-    // Build recipients string
-    const toRecipients = (messageData.recipients || []).join(', ');
-
-    // Replace template placeholders
-    htmlTemplate = htmlTemplate
-      .replace('{{DATE}}', escapeHtml(dateStr))
-      .replace('{{FROM}}', escapeHtml(messageData.author || ''))
-      .replace('{{SUBJECT}}', escapeHtml(messageData.subject || 'Kein Betreff'))
-      .replace('{{TO}}', escapeHtml(toRecipients));
-
-    // Handle CC section (not currently available in messageData, leave empty)
-    htmlTemplate = htmlTemplate.replace('{{CC_SECTION}}', '');
-    
-    // Handle BCC section (not currently available in messageData, leave empty)
-    htmlTemplate = htmlTemplate.replace('{{BCC_SECTION}}', '');
-
-    // Handle attachments section
-    if (selectedAttachments && selectedAttachments.length > 0) {
-      const attachmentList = selectedAttachments.map(att => 
-        `${escapeHtml(att.name)} (${formatFileSize(att.size)})`
-      ).join(', ');
-      const attachSection = `
-        <div class="header-row">
-          <span class="header-label">Anhänge:</span>
-          <span class="header-value attachments-list">${attachmentList}</span>
-        </div>
-      `;
-      htmlTemplate = htmlTemplate.replace('{{ATTACHMENTS_SECTION}}', attachSection);
-    } else {
-      htmlTemplate = htmlTemplate.replace('{{ATTACHMENTS_SECTION}}', '');
+    // Convert email to PDF via Gotenberg
+    console.log('📧 Converting email to PDF via Gotenberg...');
+    let pdfBlob;
+    try {
+      pdfBlob = await convertEmailToPdfViaGotenberg(messageData, emailBodyData, selectedAttachments, gotenbergUrl);
+    } catch (gotenbergError) {
+      console.error('📧 Gotenberg conversion failed:', gotenbergError);
+      return {
+        success: false,
+        error: `Gotenberg-Konvertierung fehlgeschlagen: ${gotenbergError.message}`
+      };
     }
 
-    // Handle email body content
-    // If HTML content, use it directly (Gotenberg renders HTML in a sandboxed environment)
-    // Note: We trust the email body HTML from Thunderbird's message API. The HTML template
-    // wraps this content, and Gotenberg/Chromium handles rendering safely.
-    // If plain text, escape it and use pre-wrap styling
-    let contentHtml;
-    let contentClass;
-    if (emailBodyData.isHtml && emailBodyData.body) {
-      // Use HTML content directly - Gotenberg/Chromium will render it properly
-      // The email body comes from Thunderbird's trusted message parsing API
-      contentHtml = emailBodyData.body;
-      contentClass = 'content-html';
-    } else {
-      // Plain text - escape and preserve whitespace
-      contentHtml = escapeHtml(emailBodyData.body || '');
-      contentClass = 'content';
-    }
-    htmlTemplate = htmlTemplate.replace('{{CONTENT}}', contentHtml);
-    htmlTemplate = htmlTemplate.replace('{{CONTENT_CLASS}}', contentClass);
-
-    // Create filename
+    // Create filename for the PDF
     const fileDateStr = documentDate || new Date().toISOString().split('T')[0];
     const safeSubject = (messageData.subject || 'Kein_Betreff')
       .replace(/[^a-zA-Z0-9äöüÄÖÜß\s-]/g, '')
       .replace(/\s+/g, '_')
       .substring(0, 50);
-    const htmlFilename = `${fileDateStr}_${safeSubject}.html`;
-    console.log('📧 HTML filename:', htmlFilename);
+    const pdfFilename = `${fileDateStr}_${safeSubject}.pdf`;
+    console.log('📧 PDF filename:', pdfFilename);
 
-    // Create HTML blob and convert to File for proper FormData serialization
-    // Note: Using File instead of Blob ensures correct content transmission in all browser environments
-    const htmlBlob = new Blob([htmlTemplate], { type: 'text/html' });
-    const htmlFile = new File([htmlBlob], htmlFilename, { type: 'text/html' });
-    console.log('📧 HTML file size:', htmlFile.size);
+    // Create PDF file for FormData
+    const pdfFile = new File([pdfBlob], pdfFilename, { type: 'application/pdf' });
+    console.log('📧 PDF file size:', pdfFile.size);
 
-    // Upload HTML file
-    const htmlFormData = new FormData();
-    htmlFormData.append('document', htmlFile);
-    htmlFormData.append('title', safeSubject);
+    // Upload PDF to Paperless
+    const pdfFormData = new FormData();
+    pdfFormData.append('document', pdfFile);
+    pdfFormData.append('title', safeSubject);
     
     if (emailDocumentType && emailDocumentType.id) {
-      htmlFormData.append('document_type', emailDocumentType.id);
+      pdfFormData.append('document_type', emailDocumentType.id);
     }
     if (documentDate) {
-      htmlFormData.append('created', documentDate);
+      pdfFormData.append('created', documentDate);
     }
     if (correspondent) {
-      htmlFormData.append('correspondent', correspondent);
+      pdfFormData.append('correspondent', correspondent);
     }
     if (tags && tags.length > 0) {
-      tags.forEach(tagId => htmlFormData.append('tags', tagId));
+      tags.forEach(tagId => pdfFormData.append('tags', tagId));
     }
 
-    console.log('📧 Uploading HTML to Paperless...');
-    const htmlResponse = await fetch(`${config.url}/api/documents/post_document/`, {
+    console.log('📧 Uploading PDF to Paperless...');
+    const pdfResponse = await fetch(`${config.url}/api/documents/post_document/`, {
       method: 'POST',
       headers: { 'Authorization': `Token ${config.token}` },
-      body: htmlFormData
+      body: pdfFormData
     });
 
-    if (!htmlResponse.ok) {
-      const errorText = await htmlResponse.text();
-      console.error('📧 HTML upload failed:', errorText);
-      throw new Error(`Upload failed (${htmlResponse.status}): ${errorText}`);
+    if (!pdfResponse.ok) {
+      const errorText = await pdfResponse.text();
+      console.error('📧 PDF upload failed:', errorText);
+      throw new Error(`Upload failed (${pdfResponse.status}): ${errorText}`);
     }
 
     // Add tag to Thunderbird email
-    console.log('🏷️ Paperless-Tag: HTML-Upload erfolgreich, füge Tag hinzu...');
+    console.log('🏷️ Paperless-Tag: PDF-Upload erfolgreich, füge Tag hinzu...');
     addPaperlessTagToEmail(messageData.id).catch(e =>
       console.warn("🏷️ Paperless-Tag: Fehler beim Taggen der E-Mail:", e)
     );
 
     // Wait for document processing
-    const htmlTaskId = await htmlResponse.text();
-    console.log('📧 HTML upload task ID:', htmlTaskId);
-    console.log('📧 Waiting for Paperless to process (Gotenberg)...');
-    const emailDocId = await waitForDocumentId(config, htmlTaskId.replace(/"/g, ''));
+    const pdfTaskId = await pdfResponse.text();
+    console.log('📧 PDF upload task ID:', pdfTaskId);
+    console.log('📧 Waiting for Paperless to process...');
+    const emailDocId = await waitForDocumentId(config, pdfTaskId.replace(/"/g, ''));
     console.log('📧 Email document ID:', emailDocId);
 
     if (!emailDocId) {
@@ -1338,7 +1456,7 @@ async function uploadEmailAsHtml(messageData, selectedAttachments, direction, co
     }
 
     const totalDocs = 1 + attachmentDocIds.length;
-    console.log('📧 HTML upload complete. Total documents:', totalDocs);
+    console.log('📧 Gotenberg upload complete. Total documents:', totalDocs);
     showNotification(`✅ ${totalDocs} Dokument(e) hochgeladen (via Gotenberg)!`, "success");
 
     return {
@@ -1346,11 +1464,11 @@ async function uploadEmailAsHtml(messageData, selectedAttachments, direction, co
       emailDocId: emailDocId,
       attachmentDocIds: attachmentDocIds,
       attachmentErrors: attachmentErrors.length > 0 ? attachmentErrors : undefined,
-      strategy: 'html'
+      strategy: 'gotenberg'
     };
 
   } catch (error) {
-    console.error("📧 ❌ HTML upload error:", error);
+    console.error("📧 ❌ Gotenberg upload error:", error);
     return {
       success: false,
       error: error.message || 'Unbekannter Fehler'

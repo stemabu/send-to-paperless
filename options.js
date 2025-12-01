@@ -3,11 +3,12 @@ document.getElementById('settingsForm').addEventListener('submit', saveSettings)
 document.getElementById('addMappingBtn').addEventListener('click', addMapping);
 
 async function loadSettings() {
-  const settings = await getPaperlessSettings();
+  const settings = await browser.storage.sync.get(['paperlessUrl', 'paperlessToken', 'defaultTags', 'gotenbergUrl']);
 
   document.getElementById('paperlessUrl').value = settings.paperlessUrl || '';
   document.getElementById('paperlessToken').value = settings.paperlessToken || '';
   document.getElementById('defaultTags').value = settings.defaultTags || '';
+  document.getElementById('gotenbergUrl').value = settings.gotenbergUrl || '';
   
   await loadCorrespondents();
   await displayMappings();
@@ -44,10 +45,17 @@ async function saveSettings(event) {
   const paperlessUrl = document.getElementById('paperlessUrl').value.trim();
   const paperlessToken = document.getElementById('paperlessToken').value.trim();
   const defaultTags = document.getElementById('defaultTags').value.trim();
+  const gotenbergUrl = document.getElementById('gotenbergUrl').value.trim();
 
   // Validate URL format
   if (paperlessUrl && !isValidUrl(paperlessUrl)) {
     showStatus('Please enter a valid URL (including http:// or https://)', 'error');
+    return;
+  }
+
+  // Validate Gotenberg URL format
+  if (gotenbergUrl && !isValidUrl(gotenbergUrl)) {
+    showStatus('Please enter a valid Gotenberg URL (including http:// or https://)', 'error');
     return;
   }
 
@@ -60,11 +68,21 @@ async function saveSettings(event) {
     }
   }
 
+  // Request permission for Gotenberg URL if it's provided
+  if (gotenbergUrl) {
+    const gotenbergPermissionGranted = await requestSitePermission(gotenbergUrl);
+    if (!gotenbergPermissionGranted) {
+      showStatus('Permission to access the Gotenberg URL was denied. Please allow access to save the settings.', 'error');
+      return;
+    }
+  }
+
   try {
     await browser.storage.sync.set({
       paperlessUrl: paperlessUrl.replace(/\/$/, ''), // Remove trailing slash
       paperlessToken: paperlessToken,
-      defaultTags: defaultTags
+      defaultTags: defaultTags,
+      gotenbergUrl: gotenbergUrl.replace(/\/$/, '') // Remove trailing slash
     });
 
     showStatus('Settings saved successfully!', 'success');

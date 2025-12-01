@@ -243,6 +243,12 @@
         <div class="help-text">Comma-separated tags to apply to uploaded documents</div>
       </div>
 
+      <div class="form-group">
+        <label for="gotenbergUrl">Gotenberg URL (optional, für E-Mail zu PDF Konvertierung):</label>
+        <input type="url" id="gotenbergUrl" name="gotenbergUrl" placeholder="z.B. http://localhost:3000">
+        <div class="help-text">URL des Gotenberg-Servers für HTML zu PDF Konvertierung. Erforderlich wenn "Gotenberg" als PDF-Strategie verwendet wird.</div>
+      </div>
+
       <button type="submit" class="save-btn">Einstellungen speichern</button>
 
       <div id="statusMessage" class="status-message"></div>
