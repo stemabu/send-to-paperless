@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Send to Paperless-ngx",
-  "version": "0.8.3",
-  "description": "Send Emails and attachments to Paperless-ngx from Thunderbird",
+  "version": "0.8.5",
+  "description": "Emails und Anhänge zu Paperless-ngx übertragen",
   "browser_specific_settings": {
     "gecko": {
       "id": "@send2paperless.stemabu",
