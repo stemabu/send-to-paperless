@@ -3,7 +3,7 @@
 <p align="center">
   <img src="icons/icon-512.png" alt="Send-to-Paperless-Icon" width="256" height="256">
 </p>
-<p align="center">This Addon is based on https://github.com/sebastian-xyz/paperless-upload-thunderbird, but it was heavily customized to my personal needs.</p>
+<p align="center">This Addon is based on https://github.com/sebastian-xyz/paperless-upload-thunderbird, but it was heavily customized to my personal needs and is still undergoing major changes.</p>
 
 ---
 
