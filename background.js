@@ -1231,7 +1231,7 @@ async function convertEmailToPdfViaGotenberg(messageData, emailBodyData, selecte
   
   // Create FormData for Gotenberg
   const formData = new FormData();
-  const htmlFile = new File([htmlContent], 'email.html', { type: 'text/html' });
+  const htmlFile = new File([htmlContent], 'index.html', { type: 'text/html' });
   formData.append('files', htmlFile);
   
   // POST to Gotenberg's Chromium HTML conversion endpoint
