@@ -18,7 +18,7 @@
 
 ## Overview
 
-**Send to Paperless-ngx** is a Thunderbird add-on that streamlines the process of uploading PDF attachments directly to your [paperless-ngx](https://github.com/paperless-ngx/paperless-ngx) server. With a single click, you can send documents from your inbox to your document management system—no manual downloads or uploads required.
+**Send to Paperless-ngx** is a Thunderbird add-on that streamlines the process of uploading emails and their attachments directly to your [paperless-ngx](https://github.com/paperless-ngx/paperless-ngx) server. With a single click, you can send documents from your inbox to your document management system—no manual downloads or uploads required.
 
 ---
 
