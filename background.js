@@ -159,7 +159,7 @@ async function openAttachmentSelectionDialog(message, pdfAttachments) {
 
     // Open the selection dialog (centered, height 1000px)
     const dialogUrl = browser.runtime.getURL("select-attachments.html");
-    await createCenteredWindow(dialogUrl, 650, 1000);
+    await createCenteredWindow(dialogUrl, 550, 1000);
   } catch (error) {
     console.error("Error opening attachment selection dialog:", error);
     showNotification("Error opening attachment selection dialog", "error");
@@ -189,7 +189,7 @@ async function openAdvancedUploadDialog(message, pdfAttachments) {
     });
 
     // Open the dialog (centered, height 1000px)
-    await createCenteredWindow(dialogUrl, 650, 1000);
+    await createCenteredWindow(dialogUrl, 550, 1000);
   } catch (error) {
     console.error("Error opening dialog:", error);
     showNotification("Error opening upload dialog", "error");
@@ -249,7 +249,7 @@ async function openEmailUploadDialog(message) {
 
     // Open the email upload dialog (centered, height 1000px)
     const dialogUrl = browser.runtime.getURL("email-upload-dialog.html");
-    await createCenteredWindow(dialogUrl, 650, 1000);
+    await createCenteredWindow(dialogUrl, 550, 1000);
 
   } catch (error) {
     console.error("Error opening email upload dialog:", error);

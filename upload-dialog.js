@@ -295,29 +295,6 @@ function setupEventListeners() {
       hideSuggestions();
     }
   });
-
-  // Save window position and size when closing
-  window.addEventListener('beforeunload', async () => {
-    try {
-      const currentWindow = await browser.windows.getCurrent();
-      await browser.storage.local.set({
-        dialogWindowPreferences: {
-          left: currentWindow.left,
-          top: currentWindow.top,
-          width: currentWindow.width,
-          height: currentWindow.height
-        }
-      });
-      console.log('🪟 Saved window preferences:', {
-        left: currentWindow.left,
-        top: currentWindow.top,
-        width: currentWindow.width,
-        height: currentWindow.height
-      });
-    } catch (error) {
-      console.error('Could not save window preferences:', error);
-    }
-  });
 }
 
 function handleTagInput(event) {

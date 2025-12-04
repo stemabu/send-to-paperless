@@ -167,85 +167,33 @@ function closeWindowWithDelay(delay = 0) {
 }
 
 /**
- * Create a centered popup window with position/size persistence
+ * Create a centered popup window
  * @param {string} url - URL for the popup window
- * @param {number} width - Default window width in pixels
- * @param {number} height - Default window height in pixels
+ * @param {number} width - Window width in pixels
+ * @param {number} height - Window height in pixels
  * @returns {Promise<Object>} The created window object
  */
 async function createCenteredWindow(url, width, height) {
   try {
-    // Try to load saved window position/size
-    const stored = await browser.storage.local.get('dialogWindowPreferences');
+    const currentWindow = await browser.windows.getCurrent();
+    const left = Math.round(currentWindow.left + (currentWindow.width - width) / 2);
+    const top = Math.round(currentWindow.top + (currentWindow.height - height) / 2);
     
-    if (stored.dialogWindowPreferences) {
-      console.log('🪟 Using saved window preferences:', stored.dialogWindowPreferences);
-      return await browser.windows.create({
-        url: url,
-        type: "popup",
-        width: stored.dialogWindowPreferences.width || width,
-        height: stored.dialogWindowPreferences.height || height,
-        left: stored.dialogWindowPreferences.left,
-        top: stored.dialogWindowPreferences.top,
-        allowScriptsToClose: true
-      });
-    }
-    
-    // No saved preferences - calculate centered position
-    let currentWindow;
-    try {
-      currentWindow = await browser.windows.getCurrent();
-    } catch (e) {
-      console.warn('Could not get current window, trying fallback:', e);
-      // Fallback: Get all windows and find the focused one
-      const allWindows = await browser.windows.getAll();
-      currentWindow = allWindows.find(w => w.focused) || allWindows[0];
-    }
-
-    let left = 0;
-    let top = 0;
-    
-    if (currentWindow && currentWindow.left !== undefined && currentWindow.width) {
-      // Center relative to current window
-      left = Math.round(currentWindow.left + (currentWindow.width - width) / 2);
-      top = Math.round(currentWindow.top + (currentWindow.height - height) / 2);
-    } else if (typeof screen !== 'undefined' && screen.availWidth && screen.availHeight) {
-      // Fallback: Center on screen (rough estimate)
-      left = Math.round((screen.availWidth - width) / 2);
-      top = Math.round((screen.availHeight - height) / 2);
-    }
-    // If neither is available, left and top remain 0
-    
-    // Ensure window is not outside screen bounds (only if screen is available)
-    if (typeof screen !== 'undefined' && screen.availWidth && screen.availHeight) {
-      left = Math.max(0, Math.min(left, screen.availWidth - width));
-      top = Math.max(0, Math.min(top, screen.availHeight - height));
-    } else {
-      // Basic sanity check: ensure non-negative values
-      left = Math.max(0, left);
-      top = Math.max(0, top);
-    }
-    
-    console.log(`🪟 Creating centered window at: left=${left}, top=${top}, size=${width}x${height}`);
-    
-    return await browser.windows.create({
+    return browser.windows.create({
       url: url,
       type: "popup",
       width: width,
       height: height,
-      left: left,
-      top: top,
-      allowScriptsToClose: true
+      left: Math.max(0, left),
+      top: Math.max(0, top)
     });
   } catch (error) {
-    console.error('Error creating centered window:', error);
-    // Final fallback: create window without position
-    return await browser.windows.create({
+    console.warn('Could not get current window for centering:', error);
+    return browser.windows.create({
       url: url,
       type: "popup",
       width: width,
-      height: height,
-      allowScriptsToClose: true
+      height: height
     });
   }
 }
