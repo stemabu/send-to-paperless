@@ -296,26 +296,83 @@ function setupEventListeners() {
     }
   });
 
-  // Save window position and size when closing
-  window.addEventListener('beforeunload', async () => {
+  // Save window position and size continuously (debounced)
+  let savePositionTimeout = null;
+  
+  async function saveWindowPosition() {
+    if (savePositionTimeout) {
+      clearTimeout(savePositionTimeout);
+    }
+    
+    savePositionTimeout = setTimeout(async () => {
+      try {
+        const currentWindow = await browser.windows.getCurrent();
+        
+        // Only save if we have valid coordinates (not during close/reset)
+        if (currentWindow && 
+            typeof currentWindow.left === 'number' && 
+            typeof currentWindow.top === 'number' &&
+            currentWindow.width > 0 && 
+            currentWindow.height > 0) {
+          
+          await browser.storage.local.set({
+            dialogWindowPreferences: {
+              left: currentWindow.left,
+              top: currentWindow.top,
+              width: currentWindow.width,
+              height: currentWindow.height
+            }
+          });
+          
+          console.log('🪟 Saved window preferences:', {
+            left: currentWindow.left,
+            top: currentWindow.top,
+            width: currentWindow.width,
+            height: currentWindow.height
+          });
+        }
+      } catch (error) {
+        // Silently ignore errors during save (window may be closing)
+        console.debug('Could not save window preferences:', error);
+      }
+    }, 500); // 500ms debounce
+  }
+  
+  // Listen for window resize/move events via polling
+  // (Thunderbird doesn't reliably fire window events, so we poll)
+  let lastPosition = null;
+  let lastSize = null;
+  
+  const positionCheckInterval = setInterval(async () => {
     try {
       const currentWindow = await browser.windows.getCurrent();
-      await browser.storage.local.set({
-        dialogWindowPreferences: {
-          left: currentWindow.left,
-          top: currentWindow.top,
-          width: currentWindow.width,
-          height: currentWindow.height
+      
+      if (currentWindow) {
+        const positionChanged = !lastPosition || 
+          currentWindow.left !== lastPosition.left || 
+          currentWindow.top !== lastPosition.top;
+        
+        const sizeChanged = !lastSize || 
+          currentWindow.width !== lastSize.width || 
+          currentWindow.height !== lastSize.height;
+        
+        if (positionChanged || sizeChanged) {
+          lastPosition = { left: currentWindow.left, top: currentWindow.top };
+          lastSize = { width: currentWindow.width, height: currentWindow.height };
+          saveWindowPosition();
         }
-      });
-      console.log('🪟 Saved window preferences:', {
-        left: currentWindow.left,
-        top: currentWindow.top,
-        width: currentWindow.width,
-        height: currentWindow.height
-      });
+      }
     } catch (error) {
-      console.error('Could not save window preferences:', error);
+      // Window may be closing, stop checking
+      clearInterval(positionCheckInterval);
+    }
+  }, 1000); // Check every second
+  
+  // Save on beforeunload as final fallback
+  window.addEventListener('beforeunload', () => {
+    clearInterval(positionCheckInterval);
+    if (savePositionTimeout) {
+      clearTimeout(savePositionTimeout);
     }
   });
 }
