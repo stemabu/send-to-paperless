@@ -225,6 +225,34 @@ async function loadEmailData() {
       minute: '2-digit'
     });
 
+    // Display Thunderbird tags if available
+    if (currentMessage.tags && currentMessage.tags.length > 0) {
+      try {
+        // Get all available Thunderbird tags to map keys to labels
+        let allTags = [];
+        if (browser.messages?.listTags) {
+          allTags = await browser.messages.listTags();
+        } else if (browser.messages?.tags?.list) {
+          allTags = await browser.messages.tags.list();
+        }
+        
+        // Map tag keys to labels
+        const tagLabels = currentMessage.tags.map(tagKey => {
+          const tagInfo = allTags.find(t => t.key === tagKey);
+          return tagInfo ? (tagInfo.label || tagInfo.tag || tagKey) : tagKey;
+        });
+        
+        // Display tags
+        if (tagLabels.length > 0) {
+          document.getElementById('emailTags').textContent = tagLabels.join(', ');
+          document.getElementById('emailTagsRow').style.display = 'block';
+        }
+      } catch (error) {
+        console.error('Error loading Thunderbird tags:', error);
+        // Don't show the row if there's an error
+      }
+    }
+
     // Populate attachments if any
     if (currentAttachments.length > 0) {
       console.log('📧 Showing attachment section');
