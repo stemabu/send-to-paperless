@@ -1043,7 +1043,7 @@ function getFileIcon(filename) {
 
 // Create HTML template for email (for Gotenberg conversion)
 // Based on Paperless-ngx email_msg_template.html but simplified with inline CSS
-function createEmailHtml(messageData, emailBodyData, selectedAttachments, thunderbirdTagLabels = []) {
+function createEmailHtml(messageData, emailBodyData, selectedAttachments, thunderbirdTags = []) {
   const dateStr = new Date(messageData.date).toLocaleString('de-DE', {
     year: 'numeric', month: '2-digit', day: '2-digit',
     hour: '2-digit', minute: '2-digit'
@@ -1064,11 +1064,20 @@ function createEmailHtml(messageData, emailBodyData, selectedAttachments, thunde
   
   // Build Thunderbird tags section if any
   let tagsSection = '';
-  if (thunderbirdTagLabels && thunderbirdTagLabels.length > 0) {
+  if (thunderbirdTags && thunderbirdTags.length > 0) {
+    // Create colored badge HTML for each tag
+    const tagBadges = thunderbirdTags.map(tag => {
+      const escapedLabel = escapeHtml(tag.label);
+      // Validate color to prevent CSS injection - only allow valid hex colors
+      const validHexColor = /^#[0-9A-Fa-f]{6}$/.test(tag.color) ? tag.color : '#808080';
+      
+      return `<span class="tag-badge" style="background-color: ${validHexColor};">${escapedLabel}</span>`;
+    }).join('');
+    
     tagsSection = `
       <div class="header-row">
         <span class="header-label">Schlagwörter:</span>
-        <span class="header-value">${escapeHtml(thunderbirdTagLabels.join(', '))}</span>
+        <span class="header-value tags-container">${tagBadges}</span>
       </div>
     `;
   }
@@ -1145,6 +1154,22 @@ function createEmailHtml(messageData, emailBodyData, selectedAttachments, thunde
       flex-direction: column;
       gap: 2px;
     }
+    .tag-badge {
+      display: inline-block;
+      padding: 3px 10px;
+      margin: 2px 4px 2px 0;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 500;
+      color: white;
+      text-shadow: 0 1px 1px rgba(0,0,0,0.2);
+    }
+    .tags-container {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 4px;
+    }
   </style>
 </head>
 <body>
@@ -1182,25 +1207,28 @@ function createEmailHtml(messageData, emailBodyData, selectedAttachments, thunde
 // Gotenberg provides HTML to PDF conversion via Chromium
 async function convertEmailToPdfViaGotenberg(messageData, emailBodyData, selectedAttachments, gotenbergUrl) {
   
-  // Get Thunderbird tag labels if available
-  let thunderbirdTagLabels = [];
+  // Get Thunderbird tag labels AND colors if available
+  let thunderbirdTags = [];
   if (messageData.tags && messageData.tags.length > 0) {
     try {
       const allTags = await listAllTags();
       if (allTags) {
-        thunderbirdTagLabels = messageData.tags.map(tagKey => {
+        thunderbirdTags = messageData.tags.map(tagKey => {
           const tagInfo = allTags.find(t => t.key === tagKey);
-          return tagInfo ? (tagInfo.label || tagInfo.tag || tagKey) : tagKey;
+          return {
+            label: tagInfo ? (tagInfo.label || tagInfo.tag || tagKey) : tagKey,
+            color: tagInfo?.color || '#808080' // Fallback to gray
+          };
         });
-        console.log('📧 Thunderbird tags for Gotenberg:', thunderbirdTagLabels.join(', '));
+        console.log('📧 Thunderbird tags for Gotenberg:', thunderbirdTags.map(t => t.label).join(', '));
       }
     } catch (error) {
       console.error('Error loading Thunderbird tags for Gotenberg:', error);
     }
   }
   
-  // Create HTML content
-  const htmlContent = createEmailHtml(messageData, emailBodyData, selectedAttachments, thunderbirdTagLabels);
+  // Create HTML content with tag objects (not just labels)
+  const htmlContent = createEmailHtml(messageData, emailBodyData, selectedAttachments, thunderbirdTags);
   
   // Create FormData for Gotenberg
   const formData = new FormData();
