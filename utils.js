@@ -209,15 +209,22 @@ async function createCenteredWindow(url, width, height) {
       // Center relative to current window
       left = Math.round(currentWindow.left + (currentWindow.width - width) / 2);
       top = Math.round(currentWindow.top + (currentWindow.height - height) / 2);
-    } else {
+    } else if (typeof screen !== 'undefined' && screen.availWidth && screen.availHeight) {
       // Fallback: Center on screen (rough estimate)
       left = Math.round((screen.availWidth - width) / 2);
       top = Math.round((screen.availHeight - height) / 2);
     }
+    // If neither is available, left and top remain 0
     
-    // Ensure window is not outside screen bounds
-    left = Math.max(0, Math.min(left, screen.availWidth - width));
-    top = Math.max(0, Math.min(top, screen.availHeight - height));
+    // Ensure window is not outside screen bounds (only if screen is available)
+    if (typeof screen !== 'undefined' && screen.availWidth && screen.availHeight) {
+      left = Math.max(0, Math.min(left, screen.availWidth - width));
+      top = Math.max(0, Math.min(top, screen.availHeight - height));
+    } else {
+      // Basic sanity check: ensure non-negative values
+      left = Math.max(0, left);
+      top = Math.max(0, top);
+    }
     
     console.log(`🪟 Creating centered window at: left=${left}, top=${top}, size=${width}x${height}`);
     
