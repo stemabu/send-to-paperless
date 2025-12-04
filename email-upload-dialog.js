@@ -520,6 +520,37 @@ async function generateEmailPdf() {
     doc.setFontSize(10);
   }
 
+  // Get Thunderbird tag labels for PDF header
+  let thunderbirdTagLabels = [];
+  let thunderbirdTagLines = [];
+  if (currentMessage.tags && currentMessage.tags.length > 0) {
+    try {
+      // Get all available Thunderbird tags to map keys to labels
+      let allTags = [];
+      if (browser.messages?.listTags) {
+        allTags = await browser.messages.listTags();
+      } else if (browser.messages?.tags?.list) {
+        allTags = await browser.messages.tags.list();
+      }
+      
+      // Map tag keys to labels
+      thunderbirdTagLabels = currentMessage.tags.map(tagKey => {
+        const tagInfo = allTags.find(t => t.key === tagKey);
+        return tagInfo ? (tagInfo.label || tagInfo.tag || tagKey) : tagKey;
+      });
+      
+      // Prepare tag text lines for PDF
+      if (thunderbirdTagLabels.length > 0) {
+        const tagText = thunderbirdTagLabels.join(', ');
+        doc.setFontSize(10);
+        thunderbirdTagLines = doc.splitTextToSize(tagText, contentWidth - labelWidth - headerPadding);
+        console.log('📄 Thunderbird tags for PDF:', thunderbirdTagLabels.join(', '));
+      }
+    } catch (error) {
+      console.error('Error loading Thunderbird tags for PDF:', error);
+    }
+  }
+
   // Pre-calculate all text lines for accurate header height
   doc.setFontSize(10);
   const subjectLines = doc.splitTextToSize(currentMessage.subject || '', contentWidth - labelWidth - headerPadding);
@@ -534,6 +565,9 @@ async function generateEmailPdf() {
     headerContentHeight += toLines.length * lineHeight; // To lines
   }
   headerContentHeight += subjectLines.length * lineHeight; // Subject lines
+  if (thunderbirdTagLines.length > 0) {
+    headerContentHeight += thunderbirdTagLines.length * lineHeight; // Thunderbird tags lines
+  }
   if (attachmentTextLines.length > 0) {
     headerContentHeight += attachmentTextLines.length * lineHeight; // Attachment lines
   }
@@ -585,6 +619,18 @@ async function generateEmailPdf() {
     doc.text(line, valueX, yPosition + 3 + (index * lineHeight));
   });
   yPosition += subjectLines.length * lineHeight;
+
+  // Thunderbird tags line (if any)
+  if (thunderbirdTagLines.length > 0) {
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(10);
+    doc.text('Schlagwörter:', textX, yPosition + 3);
+    doc.setFont('helvetica', 'normal');
+    thunderbirdTagLines.forEach((line, index) => {
+      doc.text(line, valueX, yPosition + 3 + (index * lineHeight));
+    });
+    yPosition += thunderbirdTagLines.length * lineHeight;
+  }
 
   // Attachments line (if any)
   if (attachmentTextLines.length > 0) {

@@ -234,7 +234,8 @@ async function openEmailUploadDialog(message) {
           subject: message.subject,
           author: message.author,
           recipients: message.recipients || [],
-          date: message.date
+          date: message.date,
+          tags: message.tags || []
         },
         attachments: attachments.map(att => ({
           name: att.name,
@@ -1042,7 +1043,7 @@ function getFileIcon(filename) {
 
 // Create HTML template for email (for Gotenberg conversion)
 // Based on Paperless-ngx email_msg_template.html but simplified with inline CSS
-function createEmailHtml(messageData, emailBodyData, selectedAttachments) {
+function createEmailHtml(messageData, emailBodyData, selectedAttachments, thunderbirdTagLabels = []) {
   const dateStr = new Date(messageData.date).toLocaleString('de-DE', {
     year: 'numeric', month: '2-digit', day: '2-digit',
     hour: '2-digit', minute: '2-digit'
@@ -1059,6 +1060,17 @@ function createEmailHtml(messageData, emailBodyData, selectedAttachments) {
   } else {
     // Plain text - escape and preserve whitespace
     contentHtml = `<pre style="white-space: pre-wrap; word-wrap: break-word; font-family: inherit; margin: 0;">${escapeHtml(emailBodyData.body || '')}</pre>`;
+  }
+  
+  // Build Thunderbird tags section if any
+  let tagsSection = '';
+  if (thunderbirdTagLabels && thunderbirdTagLabels.length > 0) {
+    tagsSection = `
+      <div class="header-row">
+        <span class="header-label">Schlagwörter:</span>
+        <span class="header-value">${escapeHtml(thunderbirdTagLabels.join(', '))}</span>
+      </div>
+    `;
   }
   
   // Build attachments section if any
@@ -1154,6 +1166,7 @@ function createEmailHtml(messageData, emailBodyData, selectedAttachments) {
         <span class="header-label">Betreff:</span>
         <span class="header-value subject">${escapeHtml(messageData.subject || 'Kein Betreff')}</span>
       </div>
+      ${tagsSection}
       ${attachmentsSection}
     </div>
     <div class="separator"></div>
@@ -1169,8 +1182,25 @@ function createEmailHtml(messageData, emailBodyData, selectedAttachments) {
 // Gotenberg provides HTML to PDF conversion via Chromium
 async function convertEmailToPdfViaGotenberg(messageData, emailBodyData, selectedAttachments, gotenbergUrl) {
   
+  // Get Thunderbird tag labels if available
+  let thunderbirdTagLabels = [];
+  if (messageData.tags && messageData.tags.length > 0) {
+    try {
+      const allTags = await listAllTags();
+      if (allTags) {
+        thunderbirdTagLabels = messageData.tags.map(tagKey => {
+          const tagInfo = allTags.find(t => t.key === tagKey);
+          return tagInfo ? (tagInfo.label || tagInfo.tag || tagKey) : tagKey;
+        });
+        console.log('📧 Thunderbird tags for Gotenberg:', thunderbirdTagLabels.join(', '));
+      }
+    } catch (error) {
+      console.error('Error loading Thunderbird tags for Gotenberg:', error);
+    }
+  }
+  
   // Create HTML content
-  const htmlContent = createEmailHtml(messageData, emailBodyData, selectedAttachments);
+  const htmlContent = createEmailHtml(messageData, emailBodyData, selectedAttachments, thunderbirdTagLabels);
   
   // Create FormData for Gotenberg
   const formData = new FormData();
