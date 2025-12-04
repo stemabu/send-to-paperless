@@ -228,7 +228,7 @@ async function loadEmailData() {
     // Display Thunderbird tags if available
     if (currentMessage.tags && currentMessage.tags.length > 0) {
       try {
-        // Get all available Thunderbird tags to map keys to labels
+        // Get all available Thunderbird tags to map keys to labels AND colors
         let allTags = [];
         if (browser.messages?.listTags) {
           allTags = await browser.messages.listTags();
@@ -236,15 +236,24 @@ async function loadEmailData() {
           allTags = await browser.messages.tags.list();
         }
         
-        // Map tag keys to labels
-        const tagLabels = currentMessage.tags.map(tagKey => {
+        // Create tag badges with colors
+        const tagBadges = currentMessage.tags.map(tagKey => {
           const tagInfo = allTags.find(t => t.key === tagKey);
-          return tagInfo ? (tagInfo.label || tagInfo.tag || tagKey) : tagKey;
+          const tagLabel = tagInfo ? (tagInfo.label || tagInfo.tag || tagKey) : tagKey;
+          const tagColor = tagInfo?.color || '#808080'; // Fallback: gray if no color defined
+          
+          // Escape HTML in tag label to prevent XSS
+          const escapedLabel = tagLabel.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#x27;');
+          
+          // Validate tagColor to prevent CSS injection - only allow valid hex colors
+          const validHexColor = /^#[0-9A-Fa-f]{6}$/.test(tagColor) ? tagColor : '#808080';
+          
+          return `<span class="tag-badge" style="background-color: ${validHexColor};">${escapedLabel}</span>`;
         });
         
-        // Display tags
-        if (tagLabels.length > 0) {
-          document.getElementById('emailTags').textContent = tagLabels.join(', ');
+        // Display tags as colored badges
+        if (tagBadges.length > 0) {
+          document.getElementById('emailTags').innerHTML = tagBadges.join('');
           document.getElementById('emailTagsRow').style.display = 'block';
         }
       } catch (error) {
