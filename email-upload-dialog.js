@@ -5,6 +5,52 @@ let currentAttachments = [];
 let emailBody = '';
 let isHtmlBody = false;
 
+// Storage key for recently used tags
+const RECENTLY_USED_TAGS_KEY = 'recentlyUsedTags';
+const MAX_RECENTLY_USED_TAGS = 5;
+
+/**
+ * Get recently used tag IDs from browser.storage.local
+ * @returns {Promise<number[]>} Array of tag IDs (integers)
+ */
+async function getRecentlyUsedTags() {
+  try {
+    const result = await browser.storage.local.get(RECENTLY_USED_TAGS_KEY);
+    return result[RECENTLY_USED_TAGS_KEY] || [];
+  } catch (error) {
+    console.error('Error loading recently used tags:', error);
+    return [];
+  }
+}
+
+/**
+ * Save tag IDs to the recently used list
+ * Removes duplicates, adds new tags at the front, limits to MAX_RECENTLY_USED_TAGS
+ * @param {number[]} tagIds - Array of tag IDs to add
+ */
+async function saveRecentlyUsedTags(tagIds) {
+  try {
+    // Get current list
+    const currentTags = await getRecentlyUsedTags();
+    
+    // Remove duplicates: filter out any existing occurrences of the new tags
+    const filteredTags = currentTags.filter(id => !tagIds.includes(id));
+    
+    // Add new tags at the front (newest first)
+    const updatedTags = [...tagIds, ...filteredTags];
+    
+    // Limit to MAX_RECENTLY_USED_TAGS entries
+    const limitedTags = updatedTags.slice(0, MAX_RECENTLY_USED_TAGS);
+    
+    // Save to storage
+    await browser.storage.local.set({ [RECENTLY_USED_TAGS_KEY]: limitedTags });
+    console.log('📌 Saved recently used tags:', limitedTags);
+  } catch (error) {
+    console.error('Error saving recently used tags:', error);
+    // Graceful degradation - just log the error
+  }
+}
+
 // Extract email address from email string like "John Doe <john@example.com>"
 function extractEmailAddress(emailString) {
   if (!emailString) return null;
@@ -338,12 +384,43 @@ async function loadTags() {
     if (response.ok) {
       const data = await response.json();
       const select = document.getElementById('tags');
+      const allTags = data.results;
       
-      data.results.forEach(tag => {
-        const option = document.createElement('option');
-        option.value = tag.id;
-        option.textContent = tag.name;
-        select.appendChild(option);
+      // Get recently used tag IDs
+      const recentTagIds = await getRecentlyUsedTags();
+      
+      // Find tag objects for recently used IDs (only if they still exist)
+      const recentTags = recentTagIds
+        .map(id => allTags.find(tag => tag.id === id))
+        .filter(tag => tag !== undefined);
+      
+      // Add recently used tags with ⭐ prefix
+      if (recentTags.length > 0) {
+        recentTags.forEach(tag => {
+          const option = document.createElement('option');
+          option.value = tag.id;
+          option.textContent = `⭐ ${tag.name}`;
+          select.appendChild(option);
+        });
+        
+        // Add separator
+        const separator = document.createElement('option');
+        separator.disabled = true;
+        separator.textContent = '─────────────────────';
+        select.appendChild(separator);
+      }
+      
+      // Create a Set of recently used tag IDs for quick lookup
+      const recentTagIdSet = new Set(recentTagIds);
+      
+      // Add all other tags (excluding recently used ones)
+      allTags.forEach(tag => {
+        if (!recentTagIdSet.has(tag.id)) {
+          const option = document.createElement('option');
+          option.value = tag.id;
+          option.textContent = tag.name;
+          select.appendChild(option);
+        }
       });
     }
   } catch (error) {
@@ -1235,6 +1312,11 @@ async function handleUpload(event) {
     console.log('📤 Received result from background:', JSON.stringify(result));
 
     if (result && result.success) {
+      // Save selected tags to recently used list
+      if (selectedTags.length > 0) {
+        await saveRecentlyUsedTags(selectedTags);
+      }
+      
       let successMsg = pdfStrategy === 'gotenberg' 
         ? 'E-Mail via Gotenberg erfolgreich hochgeladen!'
         : 'E-Mail und Anhänge wurden erfolgreich an Paperless-ngx gesendet!';
