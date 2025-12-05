@@ -265,30 +265,72 @@ function extractEmailBody(fullMessage) {
   let plainBody = '';
   
   // Recursive function to find body parts
-  function findBody(part) {
+  function findBody(part, depth = 0) {
+    const indent = '  '.repeat(depth);
+    console.log(`🔍 [extractEmailBody] ${indent}Part:`, {
+      depth: depth,
+      hasBody: !!part.body,
+      bodyLength: part.body?.length || 0,
+      contentType: part.contentType || '(none)',
+      hasParts: !!part.parts,
+      partsCount: part.parts?.length || 0
+    });
+    
     if (part.body) {
-      if (part.contentType === 'text/html') {
-        htmlBody = part.body;
-      } else if (part.contentType === 'text/plain' || !part.contentType) {
-        plainBody = part.body;
+      // Normalize content type: lowercase and extract main type (remove charset etc.)
+      const contentType = (part.contentType || '').toLowerCase().split(';')[0].trim();
+      
+      console.log(`🔍 [extractEmailBody] ${indent}  → Normalized contentType: "${contentType}"`);
+      
+      if (contentType === 'text/html') {
+        console.log(`🔍 [extractEmailBody] ${indent}  → Found HTML body (${part.body.length} chars)`);
+        if (!htmlBody || part.body.length > htmlBody.length) {
+          // Prefer longer HTML body (sometimes there are multiple versions)
+          htmlBody = part.body;
+        }
+      } else if (contentType === 'text/plain' || !contentType) {
+        console.log(`🔍 [extractEmailBody] ${indent}  → Found plain text body (${part.body.length} chars)`);
+        if (!plainBody || part.body.length > plainBody.length) {
+          // Prefer longer plain text body
+          plainBody = part.body;
+        }
       }
     }
     
     if (part.parts) {
+      console.log(`🔍 [extractEmailBody] ${indent}  → Recursing into ${part.parts.length} sub-parts`);
       for (const subPart of part.parts) {
-        findBody(subPart);
+        findBody(subPart, depth + 1);
       }
     }
   }
   
   findBody(fullMessage);
   
+  console.log('🔍 [extractEmailBody] Extraction complete:', {
+    foundHtml: !!htmlBody,
+    htmlLength: htmlBody?.length || 0,
+    foundPlain: !!plainBody,
+    plainLength: plainBody?.length || 0,
+    willReturnHtml: !!htmlBody
+  });
+  
   // Return HTML if available (preferred for formatting), otherwise plain text
   // Also return isHtml flag to indicate content type
   if (htmlBody) {
+    console.log('🔍 [extractEmailBody] Returning HTML body');
     return { body: htmlBody, isHtml: true };
   }
-  return { body: plainBody, isHtml: false };
+  
+  if (plainBody) {
+    console.log('🔍 [extractEmailBody] Returning plain text body');
+    return { body: plainBody, isHtml: false };
+  }
+  
+  // No body found at all
+  console.warn('⚠️ [extractEmailBody] WARNING: No email body found in any part!');
+  console.warn('⚠️ [extractEmailBody] Full message structure:', JSON.stringify(fullMessage, null, 2));
+  return { body: '', isHtml: false };
 }
 
 // Get or create custom field by name
