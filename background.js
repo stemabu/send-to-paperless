@@ -26,15 +26,16 @@ function decodeQuotedPrintable(text) {
   // Step 1: Parse the text and extract bytes
   const bytes = [];
   let i = 0;
+  const len = text.length;
   
-  while (i < text.length) {
-    if (text[i] === '=' && text[i + 1] === '\r' && text[i + 2] === '\n') {
+  while (i < len) {
+    if (text[i] === '=' && i + 2 < len && text[i + 1] === '\r' && text[i + 2] === '\n') {
       // Soft line break (=\r\n) - skip completely
       i += 3;
-    } else if (text[i] === '=' && text[i + 1] === '\n') {
+    } else if (text[i] === '=' && i + 1 < len && text[i + 1] === '\n') {
       // Soft line break (=\n) - skip completely
       i += 2;
-    } else if (text[i] === '=' && /[0-9A-F]/i.test(text[i + 1]) && /[0-9A-F]/i.test(text[i + 2])) {
+    } else if (text[i] === '=' && i + 2 < len && /[0-9A-F]/i.test(text[i + 1]) && /[0-9A-F]/i.test(text[i + 2])) {
       // Encoded byte =XX
       const hexValue = text.substring(i + 1, i + 3);
       bytes.push(parseInt(hexValue, 16));
@@ -53,11 +54,10 @@ function decodeQuotedPrintable(text) {
   
   console.log('🔍 [decodeQuotedPrintable] Extracted bytes:', bytes.length);
   
-  // Step 2: Decode the byte array as UTF-8
+  // Step 2: Decode the byte array as UTF-8 using the global decoder
   try {
     const uint8Array = new Uint8Array(bytes);
-    const decoder = new TextDecoder('utf-8', { fatal: false });
-    const decoded = decoder.decode(uint8Array);
+    const decoded = UTF8_DECODER.decode(uint8Array);
     
     console.log('✅ [decodeQuotedPrintable] Decoded length:', decoded.length);
     console.log('🔍 [decodeQuotedPrintable] First 200 chars:', decoded.substring(0, 200));
