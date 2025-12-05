@@ -234,6 +234,7 @@ async function openEmailUploadDialog(message) {
           subject: message.subject,
           author: message.author,
           recipients: message.recipients || [],
+          ccList: message.ccList || [],
           date: message.date,
           tags: message.tags || []
         },
@@ -1051,6 +1052,9 @@ function createEmailHtml(messageData, emailBodyData, selectedAttachments, thunde
   
   const toRecipients = (messageData.recipients || []).join(', ');
   
+  // Get CC recipients if any
+  const ccRecipients = (messageData.ccList || []).join(', ');
+  
   // Prepare content - HTML or plain text
   let contentHtml;
   if (emailBodyData.isHtml && emailBodyData.body) {
@@ -1122,27 +1126,23 @@ function createEmailHtml(messageData, emailBodyData, selectedAttachments, thunde
     .header-row {
       margin: 2px 0;
       line-height: 1.4;
+      display: grid;
+      grid-template-columns: 110px 1fr;
+      gap: 12px;
     }
     .header-label {
       color: #64748b;
-      min-width: 110px;
       text-align: right;
-      padding-right: 12px;
       font-weight: 500;
-      display: inline-block;
-      vertical-align: top;
     }
     .header-value {
-      display: inline-block;
-      vertical-align: top;
-      max-width: calc(100% - 122px); /* 110px (label min-width) + 12px (label padding-right) */
+      word-wrap: break-word;
+      overflow-wrap: break-word;
       word-break: break-word;
     }
     .header-value-block {
-      display: inline-flex;
+      display: flex;
       flex-direction: column;
-      vertical-align: top;
-      max-width: calc(100% - 122px);
       gap: 2px;
     }
     .subject {
@@ -1209,6 +1209,12 @@ function createEmailHtml(messageData, emailBodyData, selectedAttachments, thunde
         <span class="header-label">An:</span>
         <span class="header-value">${escapeHtml(toRecipients)}</span>
       </div>
+      ${ccRecipients ? `
+      <div class="header-row">
+        <span class="header-label">CC:</span>
+        <span class="header-value">${escapeHtml(ccRecipients)}</span>
+      </div>
+      ` : ''}
       <div class="header-row">
         <span class="header-label">Betreff:</span>
         <span class="header-value subject">${escapeHtml(messageData.subject || 'Kein Betreff')}</span>
