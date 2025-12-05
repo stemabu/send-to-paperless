@@ -602,8 +602,7 @@ async function generateEmailPdf() {
     // Join with comma and let splitTextToSize handle wrapping
     const attachmentText = attachmentStrings.join(', ');
     doc.setFontSize(9);
-    // Available width for values: contentWidth minus labelWidth minus padding on both sides
-    attachmentTextLines = doc.splitTextToSize(attachmentText, contentWidth - labelWidth - (headerPadding * 2));
+    attachmentTextLines = doc.splitTextToSize(attachmentText, contentWidth - labelWidth - headerPadding);
     doc.setFontSize(10);
   }
 
@@ -630,8 +629,7 @@ async function generateEmailPdf() {
       if (thunderbirdTagLabels.length > 0) {
         const tagText = thunderbirdTagLabels.join(', ');
         doc.setFontSize(10);
-        // Available width for values: contentWidth minus labelWidth minus padding on both sides
-        thunderbirdTagLines = doc.splitTextToSize(tagText, contentWidth - labelWidth - (headerPadding * 2));
+        thunderbirdTagLines = doc.splitTextToSize(tagText, contentWidth - labelWidth - headerPadding);
         console.log('📄 Thunderbird tags for PDF:', thunderbirdTagLabels.join(', '));
       }
     } catch (error) {
@@ -641,11 +639,9 @@ async function generateEmailPdf() {
 
   // Pre-calculate all text lines for accurate header height
   doc.setFontSize(10);
-  // Available width for values: contentWidth minus labelWidth minus padding on both sides
-  const valueWidth = contentWidth - labelWidth - (headerPadding * 2);
-  const subjectLines = doc.splitTextToSize(currentMessage.subject || '', valueWidth);
-  const fromLines = doc.splitTextToSize(currentMessage.author || '', valueWidth);
-  const toLines = recipients ? doc.splitTextToSize(recipients, valueWidth) : [];
+  const subjectLines = doc.splitTextToSize(currentMessage.subject || '', contentWidth - labelWidth - headerPadding);
+  const fromLines = doc.splitTextToSize(currentMessage.author || '', contentWidth - labelWidth - headerPadding);
+  const toLines = recipients ? doc.splitTextToSize(recipients, contentWidth - labelWidth - headerPadding) : [];
   
   // Calculate exact header height based on content
   let headerContentHeight = 0;
