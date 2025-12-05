@@ -46,7 +46,7 @@ function decodeQuotedPrintable(text) {
         }
         // Decode the bytes as UTF-8
         try {
-          result += new TextDecoder('utf-8').decode(new Uint8Array(bytes));
+          result += UTF8_DECODER.decode(new Uint8Array(bytes));
         } catch (e) {
           // Fallback: decode each byte individually
           bytes.forEach(b => result += String.fromCharCode(b));
@@ -74,7 +74,7 @@ function decodeBase64(text) {
     for (let i = 0; i < binaryString.length; i++) {
       bytes[i] = binaryString.charCodeAt(i);
     }
-    return new TextDecoder('utf-8').decode(bytes);
+    return UTF8_DECODER.decode(bytes);
   } catch (e) {
     console.error('❌ Base64 decode error:', e);
     return text;
