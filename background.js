@@ -329,7 +329,14 @@ function extractEmailBody(fullMessage) {
   
   // No body found at all
   console.warn('⚠️ [extractEmailBody] WARNING: No email body found in any part!');
-  console.warn('⚠️ [extractEmailBody] Full message structure:', JSON.stringify(fullMessage, null, 2));
+  // Log only message structure metadata (not body content) for debugging
+  const sanitizeForLog = (part) => ({
+    contentType: part.contentType || '(none)',
+    hasBody: !!part.body,
+    bodyLength: part.body?.length || 0,
+    parts: part.parts ? part.parts.map(sanitizeForLog) : undefined
+  });
+  console.warn('⚠️ [extractEmailBody] Message structure (metadata only):', JSON.stringify(sanitizeForLog(fullMessage), null, 2));
   return { body: '', isHtml: false };
 }
 
