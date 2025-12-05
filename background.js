@@ -20,11 +20,49 @@ let currentMessage = null;
 // Reusable TextDecoder for efficient decoding of ArrayBuffer/TypedArray
 const UTF8_DECODER = new TextDecoder('utf-8');
 
-// Check if a character code represents a printable character or common whitespace
-// Printable ASCII: >= 0x20 (space and above)
-// Common whitespace: 0x09 (tab), 0x0A (newline), 0x0D (carriage return)
+/**
+ * Check if a character code represents a printable character or common whitespace.
+ * @param {number} charCode - The character code to check
+ * @returns {boolean} True if the character is printable (>= 0x20) or whitespace (tab, newline, carriage return)
+ */
 function isPrintableOrWhitespace(charCode) {
   return charCode >= 0x20 || charCode === 0x09 || charCode === 0x0A || charCode === 0x0D;
+}
+
+/**
+ * Remove binary prefix from decoded content (e.g., S/MIME headers before actual content).
+ * For HTML content: removes bytes before the first '<' character.
+ * For plain text: removes leading non-printable characters.
+ * @param {string} content - The decoded content that may have a binary prefix
+ * @param {boolean} isHtml - True if content is HTML, false for plain text
+ * @returns {string} Content with binary prefix removed
+ */
+function removeBinaryPrefix(content, isHtml) {
+  if (!content || content.length === 0) {
+    return content;
+  }
+  
+  if (isHtml) {
+    // For HTML: Find first "<" (start of HTML tag)
+    const htmlStart = content.indexOf('<');
+    if (htmlStart > 0 && htmlStart < MAX_BINARY_PREFIX_BYTES) {
+      return content.substring(htmlStart);
+    }
+  } else {
+    // For plain text: Remove leading non-printable characters
+    let textStart = 0;
+    while (textStart < content.length && textStart < MAX_BINARY_PREFIX_BYTES) {
+      if (isPrintableOrWhitespace(content.charCodeAt(textStart))) {
+        break;
+      }
+      textStart++;
+    }
+    if (textStart > 0) {
+      return content.substring(textStart);
+    }
+  }
+  
+  return content;
 }
 
 // Decode Quoted-Printable encoded text
@@ -1726,27 +1764,7 @@ async function uploadEmailAsHtml(messageData, selectedAttachments, direction, co
                   }
 
                   // Remove binary prefix that may exist before actual content
-                  if (decodedBody && decodedBody.length > 0) {
-                    if (isHtml) {
-                      // For HTML: Find first "<" (start of HTML tag)
-                      const htmlStart = decodedBody.indexOf('<');
-                      if (htmlStart > 0 && htmlStart < MAX_BINARY_PREFIX_BYTES) {
-                        decodedBody = decodedBody.substring(htmlStart);
-                      }
-                    } else if (isText) {
-                      // For plain text: Remove leading non-printable characters
-                      let textStart = 0;
-                      while (textStart < decodedBody.length && textStart < MAX_BINARY_PREFIX_BYTES) {
-                        if (isPrintableOrWhitespace(decodedBody.charCodeAt(textStart))) {
-                          break;
-                        }
-                        textStart++;
-                      }
-                      if (textStart > 0) {
-                        decodedBody = decodedBody.substring(textStart);
-                      }
-                    }
-                  }
+                  decodedBody = removeBinaryPrefix(decodedBody, isHtml);
                   
                   if (isHtml) {
                     htmlPart = decodedBody;
@@ -1784,18 +1802,7 @@ async function uploadEmailAsHtml(messageData, selectedAttachments, direction, co
                     }
                     
                     // Remove binary prefix for fallback (plain text assumed)
-                    if (fallbackBody && fallbackBody.length > 0) {
-                      let textStart = 0;
-                      while (textStart < fallbackBody.length && textStart < MAX_BINARY_PREFIX_BYTES) {
-                        if (isPrintableOrWhitespace(fallbackBody.charCodeAt(textStart))) {
-                          break;
-                        }
-                        textStart++;
-                      }
-                      if (textStart > 0) {
-                        fallbackBody = fallbackBody.substring(textStart);
-                      }
-                    }
+                    fallbackBody = removeBinaryPrefix(fallbackBody, false);
                     
                     emailBodyData.body = fallbackBody;
                   } else {
