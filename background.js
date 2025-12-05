@@ -1088,31 +1088,47 @@ function createEmailHtml(messageData, emailBodyData, selectedAttachments, thunde
   
   // Prepare content - HTML or plain text
   let contentHtml;
-  if (emailBodyData.isHtml && emailBodyData.body) {
-    // Sanitize HTML content to remove dangerous elements before rendering
-    // This protects against malicious HTML/JavaScript in email bodies
-    contentHtml = sanitizeHtmlForGotenberg(emailBodyData.body);
+
+  // Detect if body contains HTML even if isHtml flag is false
+  // This handles cases where Thunderbird reports plain text but body contains HTML
+  // (e.g. Microsoft Outlook emails with xmlns attributes)
+  const bodyText = emailBodyData.body || '';
+  // Match complete HTML tags to avoid false positives (e.g., "body text" should not match)
+  const containsHtmlTags = /<(html|body|div|p|table|span|head|meta|style)(\s[^>]*)?>/i.test(bodyText);
+
+  console.log('🔍 [createEmailHtml] HTML detection:', {
+    isHtmlFlag: emailBodyData.isHtml,
+    containsHtmlTags: containsHtmlTags,
+    willUseHtmlRendering: emailBodyData.isHtml || containsHtmlTags
+  });
+
+  if ((emailBodyData.isHtml || containsHtmlTags) && bodyText) {
+    // Treat as HTML - sanitize and render
+    console.log('🔍 [createEmailHtml] Treating body as HTML');
+    contentHtml = sanitizeHtmlForGotenberg(bodyText);
   } else {
-    // Plain text - escape and preserve whitespace
-    contentHtml = `<pre style="white-space: pre-wrap; word-wrap: break-word; font-family: inherit; margin: 0;">${escapeHtml(emailBodyData.body || '')}</pre>`;
+    // True plain text - escape and preserve whitespace
+    console.log('🔍 [createEmailHtml] Treating body as plain text');
+    contentHtml = `<pre style="white-space: pre-wrap; word-wrap: break-word; font-family: inherit; margin: 0;">${escapeHtml(bodyText)}</pre>`;
   }
   
   console.log('🔍 [createEmailHtml] Prepared content HTML:', {
     contentLength: contentHtml?.length || 0,
     contentPreview: logHtmlPreview(contentHtml, 200),
-    isHtml: emailBodyData.isHtml
+    wasHtmlProcessed: emailBodyData.isHtml || containsHtmlTags
   });
   
-  // Check for empty body warnings
+  // Warn if content seems empty
   if (!contentHtml || contentHtml.trim().length === 0) {
     console.warn('⚠️ [createEmailHtml] WARNING: Content HTML is empty or whitespace only!');
-    console.warn('⚠️ [createEmailHtml] Email body data:', emailBodyData);
+    console.warn('⚠️ [createEmailHtml] Original body length:', bodyText.length);
+    console.warn('⚠️ [createEmailHtml] Original body preview:', bodyText.substring(0, 500));
   }
   
   // Check if HTML body became empty after sanitization (only for HTML content)
-  if (emailBodyData.isHtml && emailBodyData.body && (!contentHtml || contentHtml.trim().length === 0)) {
+  if ((emailBodyData.isHtml || containsHtmlTags) && bodyText && (!contentHtml || contentHtml.trim().length === 0)) {
     console.warn('⚠️ [createEmailHtml] WARNING: HTML body became empty after sanitization!');
-    console.warn('⚠️ [createEmailHtml] Original body length:', emailBodyData.body.length);
+    console.warn('⚠️ [createEmailHtml] Original body length:', bodyText.length);
   }
   
   // Build Thunderbird tags section if any
