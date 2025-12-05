@@ -145,6 +145,7 @@ function ensureFromHeaderAtBeginning(emlContent) {
     emlString = UTF8_DECODER.decode(emlContent);
   } else {
     // Fallback: try to convert to string
+    console.warn('📧 Unexpected emlContent type:', typeof emlContent);
     emlString = String(emlContent);
   }
   
