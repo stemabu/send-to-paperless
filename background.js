@@ -21,54 +21,53 @@ const UTF8_DECODER = new TextDecoder('utf-8');
 function decodeQuotedPrintable(text) {
   if (!text) return text;
   
-  // Replace =XX with the corresponding character (UTF-8 byte sequence)
-  // Collect all bytes first, then decode as UTF-8
-  let result = '';
-  let i = 0;
+  console.log('🔍 [decodeQuotedPrintable] Input length:', text.length);
   
-  while (i < text.length) {
-    if (text[i] === '=') {
-      // Check for soft line break (= at end of line)
-      // Pattern: =\n or =\r\n
-      if (i + 1 < text.length) {
-        const nextChar = text[i + 1];
-        if (nextChar === '\n') {
-          // Skip soft line break (=\n)
-          i += 2;
-          continue;
-        } else if (nextChar === '\r' && i + 2 < text.length && text[i + 2] === '\n') {
-          // Skip soft line break (=\r\n)
-          i += 3;
-          continue;
-        }
-      }
-      
-      // Check for hex sequence =XX (need at least 2 more characters)
-      if (i + 2 < text.length) {
-        const hex = text.substring(i + 1, i + 3);
-        if (/^[0-9A-Fa-f]{2}$/.test(hex)) {
-          // Collect consecutive hex-encoded bytes for proper UTF-8 handling
-          const bytes = [];
-          while (i + 2 < text.length && text[i] === '=' && /^[0-9A-Fa-f]{2}$/.test(text.substring(i + 1, i + 3))) {
-            bytes.push(parseInt(text.substring(i + 1, i + 3), 16));
-            i += 3;
-          }
-          // Decode the bytes as UTF-8
-          try {
-            result += UTF8_DECODER.decode(new Uint8Array(bytes));
-          } catch (e) {
-            // Fallback: append bytes as Latin-1 characters (best effort for invalid UTF-8)
-            bytes.forEach(b => result += String.fromCharCode(b));
-          }
-          continue;
-        }
-      }
+  // Step 1: Parse the text and extract bytes
+  const bytes = [];
+  let i = 0;
+  const len = text.length;
+  
+  while (i < len) {
+    if (text[i] === '=' && i + 2 < len && text[i + 1] === '\r' && text[i + 2] === '\n') {
+      // Soft line break (=\r\n) - skip completely
+      i += 3;
+    } else if (text[i] === '=' && i + 1 < len && text[i + 1] === '\n') {
+      // Soft line break (=\n) - skip completely
+      i += 2;
+    } else if (text[i] === '=' && i + 2 < len && /[0-9A-F]/i.test(text[i + 1]) && /[0-9A-F]/i.test(text[i + 2])) {
+      // Encoded byte =XX
+      const hexValue = text.substring(i + 1, i + 3);
+      bytes.push(parseInt(hexValue, 16));
+      i += 3;
+    } else if (text[i] === '=') {
+      // Invalid escape sequence - keep as-is
+      console.warn('⚠️ [decodeQuotedPrintable] Invalid escape at position', i, ':', text.substring(i, i + 5));
+      bytes.push(text.charCodeAt(i));
+      i++;
+    } else {
+      // Regular ASCII character
+      bytes.push(text.charCodeAt(i));
+      i++;
     }
-    result += text[i];
-    i++;
   }
   
-  return result;
+  console.log('🔍 [decodeQuotedPrintable] Extracted bytes:', bytes.length);
+  
+  // Step 2: Decode the byte array as UTF-8 using the global decoder
+  try {
+    const uint8Array = new Uint8Array(bytes);
+    const decoded = UTF8_DECODER.decode(uint8Array);
+    
+    console.log('✅ [decodeQuotedPrintable] Decoded length:', decoded.length);
+    console.log('🔍 [decodeQuotedPrintable] First 200 chars:', decoded.substring(0, 200));
+    
+    return decoded;
+  } catch (e) {
+    console.error('❌ [decodeQuotedPrintable] UTF-8 decode error:', e);
+    // Fallback: return as-is
+    return text;
+  }
 }
 
 // Decode Base64 encoded text
