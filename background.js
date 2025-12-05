@@ -1571,12 +1571,135 @@ async function uploadEmailAsHtml(messageData, selectedAttachments, direction, co
             fileContent.substring(0, 500).replace(/\n/g, '↵')
           );
           
-          // Try to parse as email (it might be an embedded .eml)
-          // For now, treat as plain text
-          emailBodyData.body = fileContent;
-          emailBodyData.isHtml = false;
+          // Parse the S/MIME attachment as MIME message
+          console.log('🔍 [uploadEmailAsHtml] Parsing MIME content...');
           
-          console.log('✅ [uploadEmailAsHtml] Using attachment content as email body');
+          // Step 1: Remove binary S/MIME header (everything before "Content-Type:")
+          const contentTypeIndex = fileContent.indexOf('Content-Type:');
+          if (contentTypeIndex === -1) {
+            console.warn('⚠️ [uploadEmailAsHtml] No Content-Type found in attachment, using raw content');
+            emailBodyData.body = fileContent;
+            emailBodyData.isHtml = false;
+          } else {
+            // Start from Content-Type header
+            const mimeContent = fileContent.substring(contentTypeIndex);
+            
+            console.log('🔍 [uploadEmailAsHtml] MIME content (first 500 chars):', 
+              mimeContent.substring(0, 500).replace(/\n/g, '↵')
+            );
+            
+            // Step 2: Extract boundary from Content-Type header
+            // Handle quoted boundaries (double or single quotes) and unquoted boundaries per RFC 2046
+            const boundaryMatch = mimeContent.match(/boundary=(?:"([^"]+)"|'([^']+)'|([^\s;]+))/i);
+            
+            if (!boundaryMatch) {
+              console.warn('⚠️ [uploadEmailAsHtml] No boundary found, using content after headers');
+              // Use everything after the first blank line (handle both CRLF and LF)
+              const crlfIndex = mimeContent.indexOf('\r\n\r\n');
+              const lfIndex = mimeContent.indexOf('\n\n');
+              let blankLineIndex, separatorLength;
+              if (crlfIndex !== -1 && (lfIndex === -1 || crlfIndex < lfIndex)) {
+                blankLineIndex = crlfIndex;
+                separatorLength = 4;
+              } else if (lfIndex !== -1) {
+                blankLineIndex = lfIndex;
+                separatorLength = 2;
+              } else {
+                blankLineIndex = -1;
+                separatorLength = 0;
+              }
+              emailBodyData.body = blankLineIndex !== -1 ? mimeContent.substring(blankLineIndex + separatorLength) : mimeContent;
+              emailBodyData.isHtml = false;
+            } else {
+              // Extract boundary from whichever capture group matched
+              const boundary = boundaryMatch[1] || boundaryMatch[2] || boundaryMatch[3];
+              console.log('🔍 [uploadEmailAsHtml] Found boundary:', boundary);
+              
+              // Step 3: Split by boundary
+              // MIME boundary markers: --boundary for part separators, --boundary-- for final
+              const parts = mimeContent.split('--' + boundary);
+              console.log('🔍 [uploadEmailAsHtml] Found MIME parts:', parts.length);
+              
+              let htmlPart = null;
+              let textPart = null;
+              
+              // Helper function to find blank line handling both CRLF and LF
+              const findBlankLine = (str) => {
+                const crlfIndex = str.indexOf('\r\n\r\n');
+                const lfIndex = str.indexOf('\n\n');
+                if (crlfIndex !== -1 && (lfIndex === -1 || crlfIndex < lfIndex)) {
+                  return { index: crlfIndex, length: 4 };
+                } else if (lfIndex !== -1) {
+                  return { index: lfIndex, length: 2 };
+                }
+                return { index: -1, length: 0 };
+              };
+              
+              // Step 4: Parse each part (skip first which is preamble)
+              for (let i = 1; i < parts.length; i++) {
+                const part = parts[i];
+                
+                // Check if this is the closing boundary/epilogue
+                // After splitting by --boundary, the closing --boundary-- results in a part
+                // that starts with -- (the remaining from --boundary--)
+                // This marks the end of MIME parts - anything after is epilogue
+                const trimmedPart = part.trimStart();
+                if (trimmedPart.startsWith('--') || trimmedPart.length === 0) {
+                  console.log('🔍 [uploadEmailAsHtml] Part', i, 'is closing boundary/epilogue, skipping');
+                  continue;
+                }
+                
+                // Extract headers and body (handle both CRLF and LF line endings)
+                const blankLine = findBlankLine(part);
+                if (blankLine.index === -1) continue;
+                
+                const headers = part.substring(0, blankLine.index);
+                const body = part.substring(blankLine.index + blankLine.length).trim();
+                
+                console.log('🔍 [uploadEmailAsHtml] Part', i, 'headers:', headers.substring(0, 200));
+                console.log('🔍 [uploadEmailAsHtml] Part', i, 'body length:', body.length);
+                
+                // Check Content-Type (case-insensitive, handle parameters like charset)
+                // Regex handles headers with additional params and multi-line folding
+                if (/content-type:\s*text\/html/i.test(headers)) {
+                  htmlPart = body;
+                  console.log('🔍 [uploadEmailAsHtml] Found HTML part, length:', body.length);
+                } else if (/content-type:\s*text\/plain/i.test(headers)) {
+                  textPart = body;
+                  console.log('🔍 [uploadEmailAsHtml] Found plain text part, length:', body.length);
+                }
+              }
+              
+              // Step 5: Prefer HTML over plain text
+              if (htmlPart) {
+                console.log('✅ [uploadEmailAsHtml] Using HTML part from MIME message');
+                emailBodyData.body = htmlPart;
+                emailBodyData.isHtml = true;
+              } else if (textPart) {
+                console.log('✅ [uploadEmailAsHtml] Using plain text part from MIME message');
+                emailBodyData.body = textPart;
+                emailBodyData.isHtml = false;
+              } else {
+                console.warn('⚠️ [uploadEmailAsHtml] No suitable MIME part found, using first part');
+                // Fallback: use first part after boundary
+                if (parts.length > 1) {
+                  const firstPart = parts[1];
+                  const blankLine = findBlankLine(firstPart);
+                  emailBodyData.body = blankLine.index !== -1 ? firstPart.substring(blankLine.index + blankLine.length).trim() : firstPart.trim();
+                  emailBodyData.isHtml = false;
+                } else {
+                  emailBodyData.body = mimeContent;
+                  emailBodyData.isHtml = false;
+                }
+              }
+            }
+          }
+          
+          console.log('✅ [uploadEmailAsHtml] Final extracted body:', {
+            length: emailBodyData.body?.length || 0,
+            isHtml: emailBodyData.isHtml,
+            preview: emailBodyData.body?.substring(0, 200) || '(empty)'
+          });
           
         } catch (attachmentError) {
           console.error('❌ [uploadEmailAsHtml] Failed to read attachment:', attachmentError);
