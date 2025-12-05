@@ -16,6 +16,81 @@ let currentMessage = null;
 // Reusable TextDecoder for efficient decoding of ArrayBuffer/TypedArray
 const UTF8_DECODER = new TextDecoder('utf-8');
 
+// Decode Quoted-Printable encoded text
+// Converts =XX (hex) sequences to characters and removes soft line breaks
+function decodeQuotedPrintable(text) {
+  if (!text) return text;
+  
+  // Replace =XX with the corresponding character (UTF-8 byte sequence)
+  // Collect all bytes first, then decode as UTF-8
+  let result = '';
+  let i = 0;
+  
+  while (i < text.length) {
+    if (text[i] === '=') {
+      // Check for soft line break (= at end of line)
+      // Pattern: =\n or =\r\n
+      if (i + 1 < text.length) {
+        const nextChar = text[i + 1];
+        if (nextChar === '\n') {
+          // Skip soft line break (=\n)
+          i += 2;
+          continue;
+        } else if (nextChar === '\r' && i + 2 < text.length && text[i + 2] === '\n') {
+          // Skip soft line break (=\r\n)
+          i += 3;
+          continue;
+        }
+      }
+      
+      // Check for hex sequence =XX (need at least 2 more characters)
+      if (i + 2 < text.length) {
+        const hex = text.substring(i + 1, i + 3);
+        if (/^[0-9A-Fa-f]{2}$/.test(hex)) {
+          // Collect consecutive hex-encoded bytes for proper UTF-8 handling
+          const bytes = [];
+          while (i + 2 < text.length && text[i] === '=' && /^[0-9A-Fa-f]{2}$/.test(text.substring(i + 1, i + 3))) {
+            bytes.push(parseInt(text.substring(i + 1, i + 3), 16));
+            i += 3;
+          }
+          // Decode the bytes as UTF-8
+          try {
+            result += UTF8_DECODER.decode(new Uint8Array(bytes));
+          } catch (e) {
+            // Fallback: append bytes as Latin-1 characters (best effort for invalid UTF-8)
+            bytes.forEach(b => result += String.fromCharCode(b));
+          }
+          continue;
+        }
+      }
+    }
+    result += text[i];
+    i++;
+  }
+  
+  return result;
+}
+
+// Decode Base64 encoded text
+// Handles both standard Base64 and Base64 with whitespace/newlines
+function decodeBase64(text) {
+  try {
+    // Remove whitespace and newlines
+    const cleaned = text.replace(/\s/g, '');
+    // Decode using atob
+    const binaryString = atob(cleaned);
+    // Convert to Uint8Array and decode as UTF-8
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    return UTF8_DECODER.decode(bytes);
+  } catch (e) {
+    console.error('❌ Base64 decode error:', e);
+    return text;
+  }
+}
+
 // Helper function to move From header to beginning of EML content for libmagic compatibility
 // This is a workaround for libmagic not recognizing message/rfc822 when From is not at the start
 // See: Paperless-ngx mail.py lines 916-933
@@ -1661,12 +1736,32 @@ async function uploadEmailAsHtml(messageData, selectedAttachments, direction, co
                 
                 // Check Content-Type (case-insensitive, handle parameters like charset)
                 // Regex handles headers with additional params and multi-line folding
-                if (/content-type:\s*text\/html/i.test(headers)) {
-                  htmlPart = body;
-                  console.log('🔍 [uploadEmailAsHtml] Found HTML part, length:', body.length);
-                } else if (/content-type:\s*text\/plain/i.test(headers)) {
-                  textPart = body;
-                  console.log('🔍 [uploadEmailAsHtml] Found plain text part, length:', body.length);
+                const isHtml = /content-type:\s*text\/html/i.test(headers);
+                const isText = /content-type:\s*text\/plain/i.test(headers);
+                
+                if (isHtml || isText) {
+                  // Check for Content-Transfer-Encoding and decode if needed
+                  let decodedBody = body;
+                  
+                  if (/content-transfer-encoding:\s*quoted-printable/i.test(headers)) {
+                    console.log('🔍 [uploadEmailAsHtml] Part', i, 'is quoted-printable encoded, decoding...');
+                    decodedBody = decodeQuotedPrintable(body);
+                    console.log('🔍 [uploadEmailAsHtml] Decoded from', body.length, 'to', decodedBody.length, 'chars');
+                  } else if (/content-transfer-encoding:\s*base64/i.test(headers)) {
+                    console.log('🔍 [uploadEmailAsHtml] Part', i, 'is base64 encoded, decoding...');
+                    decodedBody = decodeBase64(body);
+                    console.log('🔍 [uploadEmailAsHtml] Decoded from', body.length, 'to', decodedBody.length, 'chars');
+                  } else if (/content-transfer-encoding:\s*(8bit|7bit)/i.test(headers)) {
+                    console.log('🔍 [uploadEmailAsHtml] Part', i, 'is 7bit/8bit (no decoding needed)');
+                  }
+                  
+                  if (isHtml) {
+                    htmlPart = decodedBody;
+                    console.log('🔍 [uploadEmailAsHtml] Found HTML part, length:', decodedBody.length);
+                  } else if (isText) {
+                    textPart = decodedBody;
+                    console.log('🔍 [uploadEmailAsHtml] Found plain text part, length:', decodedBody.length);
+                  }
                 }
               }
               
@@ -1685,7 +1780,23 @@ async function uploadEmailAsHtml(messageData, selectedAttachments, direction, co
                 if (parts.length > 1) {
                   const firstPart = parts[1];
                   const blankLine = findBlankLine(firstPart);
-                  emailBodyData.body = blankLine.index !== -1 ? firstPart.substring(blankLine.index + blankLine.length).trim() : firstPart.trim();
+                  if (blankLine.index !== -1) {
+                    const fallbackHeaders = firstPart.substring(0, blankLine.index);
+                    let fallbackBody = firstPart.substring(blankLine.index + blankLine.length).trim();
+                    
+                    // Try to decode if quoted-printable or base64
+                    if (/content-transfer-encoding:\s*quoted-printable/i.test(fallbackHeaders)) {
+                      console.log('🔍 [uploadEmailAsHtml] Fallback body is quoted-printable, decoding...');
+                      fallbackBody = decodeQuotedPrintable(fallbackBody);
+                    } else if (/content-transfer-encoding:\s*base64/i.test(fallbackHeaders)) {
+                      console.log('🔍 [uploadEmailAsHtml] Fallback body is base64, decoding...');
+                      fallbackBody = decodeBase64(fallbackBody);
+                    }
+                    
+                    emailBodyData.body = fallbackBody;
+                  } else {
+                    emailBodyData.body = firstPart.trim();
+                  }
                   emailBodyData.isHtml = false;
                 } else {
                   emailBodyData.body = mimeContent;
