@@ -948,6 +948,14 @@ function escapeHtml(text) {
   return String(text).replace(/[&<>"']/g, c => div[c]);
 }
 
+// Helper function for logging HTML snippets safely
+function logHtmlPreview(html, maxLength = 200) {
+  if (!html) return '(null or undefined)';
+  const preview = html.substring(0, maxLength);
+  const hasMore = html.length > maxLength;
+  return preview.replace(/\n/g, '↵') + (hasMore ? '...' : '');
+}
+
 // Sanitize HTML content for safe rendering in Gotenberg
 // Removes dangerous elements and attributes using regex-based approach
 // (background scripts don't have DOM access for DOM-based sanitization)
@@ -963,14 +971,22 @@ function escapeHtml(text) {
 function sanitizeHtmlForGotenberg(html) {
   if (!html) return '';
   
+  console.log('🔍 [sanitizeHtmlForGotenberg] Starting sanitization');
+  console.log('🔍 [sanitizeHtmlForGotenberg] Input HTML:', {
+    length: html?.length || 0,
+    preview: logHtmlPreview(html, 200)
+  });
   
   let sanitized = html;
   let previousLength;
+  let passCount = 0;
   
   // Apply multiple passes to handle nested/repeated dangerous content
   // Continue until the content stabilizes (no more changes)
   do {
+    passCount++;
     previousLength = sanitized.length;
+    console.log(`🔍 [sanitizeHtmlForGotenberg] Pass ${passCount}, length: ${sanitized.length}`);
     
     // 1. Remove script tags and their content (handles various variations)
     // Use [\s\S] instead of . to match across newlines
@@ -1019,6 +1035,13 @@ function sanitizeHtmlForGotenberg(html) {
     
   } while (sanitized.length !== previousLength);
   
+  console.log(`🔍 [sanitizeHtmlForGotenberg] Total passes: ${passCount}`);
+  console.log('🔍 [sanitizeHtmlForGotenberg] Sanitization complete:', {
+    originalLength: html?.length || 0,
+    sanitizedLength: sanitized.length,
+    removed: (html?.length || 0) - sanitized.length,
+    preview: logHtmlPreview(sanitized, 200)
+  });
   
   return sanitized;
 }
@@ -1052,6 +1075,14 @@ function createEmailHtml(messageData, emailBodyData, selectedAttachments, thunde
   
   const toRecipients = (messageData.recipients || []).join(', ');
   
+  console.log('🔍 [createEmailHtml] Creating email HTML template');
+  console.log('🔍 [createEmailHtml] Email body data:', {
+    hasBody: !!emailBodyData.body,
+    bodyLength: emailBodyData.body?.length || 0,
+    isHtml: emailBodyData.isHtml,
+    bodyPreview: logHtmlPreview(emailBodyData.body, 200)
+  });
+  
   // Get CC recipients if any
   const ccRecipients = (messageData.ccList || []).join(', ');
   
@@ -1064,6 +1095,24 @@ function createEmailHtml(messageData, emailBodyData, selectedAttachments, thunde
   } else {
     // Plain text - escape and preserve whitespace
     contentHtml = `<pre style="white-space: pre-wrap; word-wrap: break-word; font-family: inherit; margin: 0;">${escapeHtml(emailBodyData.body || '')}</pre>`;
+  }
+  
+  console.log('🔍 [createEmailHtml] Prepared content HTML:', {
+    contentLength: contentHtml?.length || 0,
+    contentPreview: logHtmlPreview(contentHtml, 200),
+    isHtml: emailBodyData.isHtml
+  });
+  
+  // Check for empty body warnings
+  if (!contentHtml || contentHtml.trim().length === 0) {
+    console.warn('⚠️ [createEmailHtml] WARNING: Content HTML is empty or whitespace only!');
+    console.warn('⚠️ [createEmailHtml] Email body data:', emailBodyData);
+  }
+  
+  // Check if HTML body became empty after sanitization (only for HTML content)
+  if (emailBodyData.isHtml && emailBodyData.body && (!contentHtml || contentHtml.trim().length === 0)) {
+    console.warn('⚠️ [createEmailHtml] WARNING: HTML body became empty after sanitization!');
+    console.warn('⚠️ [createEmailHtml] Original body length:', emailBodyData.body.length);
   }
   
   // Build Thunderbird tags section if any
@@ -1100,7 +1149,7 @@ function createEmailHtml(messageData, emailBodyData, selectedAttachments, thunde
     `;
   }
   
-  return `<!doctype html>
+  const finalHtml = `<!doctype html>
 <html>
 <head>
   <meta charset="UTF-8">
@@ -1229,6 +1278,14 @@ function createEmailHtml(messageData, emailBodyData, selectedAttachments, thunde
   </div>
 </body>
 </html>`;
+  
+  console.log('🔍 [createEmailHtml] Final HTML template:', {
+    totalLength: finalHtml.length,
+    hasContent: finalHtml.includes('<div class="content">'),
+    contentSectionPreview: finalHtml.match(/<div class="content">([\s\S]{0,300})/)?.[1] || '(not found)'
+  });
+  
+  return finalHtml;
 }
 
 // Convert email to PDF via Gotenberg HTTP API
@@ -1258,6 +1315,14 @@ async function convertEmailToPdfViaGotenberg(messageData, emailBodyData, selecte
   // Create HTML content with tag objects (not just labels)
   const htmlContent = createEmailHtml(messageData, emailBodyData, selectedAttachments, thunderbirdTags);
   
+  console.log('🔍 [convertEmailToPdfViaGotenberg] HTML content created:', {
+    length: htmlContent.length,
+    hasDoctype: htmlContent.startsWith('<!doctype'),
+    hasBody: htmlContent.includes('<body>'),
+    hasContent: htmlContent.includes('<div class="content">'),
+    preview: logHtmlPreview(htmlContent, 300)
+  });
+  
   // Create FormData for Gotenberg
   const formData = new FormData();
   const htmlFile = new File([htmlContent], 'index.html', { type: 'text/html' });
@@ -1267,6 +1332,11 @@ async function convertEmailToPdfViaGotenberg(messageData, emailBodyData, selecte
   // This endpoint is the standard Gotenberg API path for HTML to PDF conversion
   // Compatible with Gotenberg v7+ (https://gotenberg.dev/docs/routes#html-file-into-pdf-route)
   const gotenbergEndpoint = `${gotenbergUrl}/forms/chromium/convert/html`;
+  
+  console.log('🔍 [convertEmailToPdfViaGotenberg] Gotenberg request sent:', {
+    endpoint: gotenbergEndpoint,
+    htmlFileSize: htmlContent.length
+  });
   
   const response = await fetch(gotenbergEndpoint, {
     method: 'POST',
@@ -1280,6 +1350,11 @@ async function convertEmailToPdfViaGotenberg(messageData, emailBodyData, selecte
   }
   
   const pdfBlob = await response.blob();
+  
+  console.log('🔍 [convertEmailToPdfViaGotenberg] PDF generated successfully:', {
+    pdfSize: pdfBlob.size,
+    pdfType: pdfBlob.type
+  });
   
   return pdfBlob;
 }
