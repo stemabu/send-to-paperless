@@ -29,29 +29,39 @@ function decodeQuotedPrintable(text) {
   while (i < text.length) {
     if (text[i] === '=') {
       // Check for soft line break (= at end of line)
-      if (text.substring(i, i + 3).match(/^=\r?\n/)) {
-        // Skip soft line break
-        i += text[i + 1] === '\r' ? 3 : 2;
-        continue;
+      // Pattern: =\n or =\r\n
+      if (i + 1 < text.length) {
+        const nextChar = text[i + 1];
+        if (nextChar === '\n') {
+          // Skip soft line break (=\n)
+          i += 2;
+          continue;
+        } else if (nextChar === '\r' && i + 2 < text.length && text[i + 2] === '\n') {
+          // Skip soft line break (=\r\n)
+          i += 3;
+          continue;
+        }
       }
       
-      // Check for hex sequence =XX
-      const hex = text.substring(i + 1, i + 3);
-      if (/^[0-9A-Fa-f]{2}$/.test(hex)) {
-        // Collect consecutive hex-encoded bytes for proper UTF-8 handling
-        const bytes = [];
-        while (i < text.length && text[i] === '=' && /^[0-9A-Fa-f]{2}$/.test(text.substring(i + 1, i + 3))) {
-          bytes.push(parseInt(text.substring(i + 1, i + 3), 16));
-          i += 3;
+      // Check for hex sequence =XX (need at least 2 more characters)
+      if (i + 2 < text.length) {
+        const hex = text.substring(i + 1, i + 3);
+        if (/^[0-9A-Fa-f]{2}$/.test(hex)) {
+          // Collect consecutive hex-encoded bytes for proper UTF-8 handling
+          const bytes = [];
+          while (i + 2 < text.length && text[i] === '=' && /^[0-9A-Fa-f]{2}$/.test(text.substring(i + 1, i + 3))) {
+            bytes.push(parseInt(text.substring(i + 1, i + 3), 16));
+            i += 3;
+          }
+          // Decode the bytes as UTF-8
+          try {
+            result += UTF8_DECODER.decode(new Uint8Array(bytes));
+          } catch (e) {
+            // Fallback: append bytes as Latin-1 characters (best effort for invalid UTF-8)
+            bytes.forEach(b => result += String.fromCharCode(b));
+          }
+          continue;
         }
-        // Decode the bytes as UTF-8
-        try {
-          result += UTF8_DECODER.decode(new Uint8Array(bytes));
-        } catch (e) {
-          // Fallback: decode each byte individually
-          bytes.forEach(b => result += String.fromCharCode(b));
-        }
-        continue;
       }
     }
     result += text[i];
@@ -1742,8 +1752,7 @@ async function uploadEmailAsHtml(messageData, selectedAttachments, direction, co
                     decodedBody = decodeBase64(body);
                     console.log('🔍 [uploadEmailAsHtml] Decoded from', body.length, 'to', decodedBody.length, 'chars');
                   } else if (/content-transfer-encoding:\s*(8bit|7bit)/i.test(headers)) {
-                    const encoding = headers.match(/content-transfer-encoding:\s*(\w+)/i)?.[1];
-                    console.log('🔍 [uploadEmailAsHtml] Part', i, 'is', encoding, '(no decoding needed)');
+                    console.log('🔍 [uploadEmailAsHtml] Part', i, 'is 7bit/8bit (no decoding needed)');
                   }
                   
                   if (isHtml) {
