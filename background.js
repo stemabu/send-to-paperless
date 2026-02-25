@@ -256,11 +256,19 @@ async function handleAdvancedPdfUpload(info) {
 async function openAttachmentSelectionDialog(message, pdfAttachments) {
   try {
     // Store data for the dialog to access
+    const fullMessage = await browser.messages.getFull(message.id);
+    let fullSubject = message.subject;
+    if (fullMessage.headers && fullMessage.headers.subject) {
+      fullSubject = Array.isArray(fullMessage.headers.subject) 
+        ? fullMessage.headers.subject[0] 
+        : fullMessage.headers.subject;
+    }
+
     await browser.storage.local.set({
-      quickUploadData: {
+      currentUploadData: {
         message: {
           id: message.id,
-          subject: message.subject,
+          subject: fullSubject,
           author: message.author,
           date: message.date
         },
@@ -287,11 +295,19 @@ async function openAdvancedUploadDialog(message, pdfAttachments) {
 
   try {
     // Store data for the dialog to access
+    const fullMessage = await browser.messages.getFull(message.id);
+    let fullSubject = message.subject;
+    if (fullMessage.headers && fullMessage.headers.subject) {
+      fullSubject = Array.isArray(fullMessage.headers.subject) 
+        ? fullMessage.headers.subject[0] 
+        : fullMessage.headers.subject;
+    }
+
     await browser.storage.local.set({
       currentUploadData: {
         message: {
           id: message.id,
-          subject: message.subject,
+          subject: fullSubject,
           author: message.author,
           date: message.date
         },
@@ -342,11 +358,18 @@ async function openEmailUploadDialog(message) {
     const emailBody = extractEmailBody(fullMessage);
 
     // Store data for the dialog to access
+    let fullSubject = message.subject;
+    if (fullMessage.headers && fullMessage.headers.subject) {
+      fullSubject = Array.isArray(fullMessage.headers.subject) 
+        ? fullMessage.headers.subject[0] 
+        : fullMessage.headers.subject;
+    }
+
     await browser.storage.local.set({
       emailUploadData: {
         message: {
           id: message.id,
-          subject: message.subject,
+          subject: fullSubject,  // Vollständiger Betreff mit "Re:"
           author: message.author,
           recipients: message.recipients || [],
           ccList: message.ccList || [],
