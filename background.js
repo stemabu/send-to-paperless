@@ -1764,13 +1764,21 @@ async function uploadEmailAsHtml(messageData, selectedAttachments, direction, co
       .substring(0, 50);
     const pdfFilename = `${fileDateStr}_${safeSubject}.pdf`;
 
+    // Create title with correspondent info
+    const documentTitle = createDocumentTitle(
+      messageData.subject,
+      direction,
+      messageData.author,
+      messageData.recipients
+    );
+
     // Create PDF file for FormData
     const pdfFile = new File([pdfBlob], pdfFilename, { type: 'application/pdf' });
 
     // Upload PDF to Paperless
     const pdfFormData = new FormData();
     pdfFormData.append('document', pdfFile);
-    pdfFormData.append('title', safeSubject);
+    pdfFormData.append('title', documentTitle);  // ← Geändert: documentTitle statt safeSubject
     
     if (emailDocumentType && emailDocumentType.id) {
       pdfFormData.append('document_type', emailDocumentType.id);
@@ -2032,6 +2040,14 @@ async function uploadEmailAsEml(messageData, selectedAttachments, direction, cor
       .substring(0, 50);
     const emlFilename = `${dateStr}_${safeSubject}.eml`;
 
+    // Create title with correspondent info
+    const documentTitle = createDocumentTitle(
+      messageData.subject,
+      direction,
+      messageData.author,
+      messageData.recipients
+    );
+
     // IMPORTANT: Do not specify MIME type in Blob/File constructor.
     // This allows Paperless to use libmagic for detection, which will now
     // correctly identify message/rfc822 thanks to the From-header workaround.
@@ -2042,7 +2058,7 @@ async function uploadEmailAsEml(messageData, selectedAttachments, direction, cor
     // Upload EML file
     const emlFormData = new FormData();
     emlFormData.append('document', emlFile);
-    emlFormData.append('title', safeSubject);
+    emlFormData.append('title', documentTitle);  // ← Geändert: documentTitle statt safeSubject
     
     if (emailDocumentType && emailDocumentType.id) {
       emlFormData.append('document_type', emailDocumentType.id);
@@ -2558,6 +2574,51 @@ browser.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
 function extractCorrespondentFromEmail(emailString) {
   const match = emailString.match(/^(.+?)\s*<.+>$/);
   return match ? match[1].trim() : emailString.split('@')[0];
+}
+
+// Extract clean name from email address (removes email part)
+function extractNameFromEmailAddress(emailString) {
+  if (!emailString) return '';
+  
+  // Format: "Name <email@domain.com>" -> "Name"
+  const match = emailString.match(/^(.+?)\s*<.+>$/);
+  if (match) {
+    return match[1].trim();
+  }
+  
+  // Format: "email@domain.com" -> "email" (without domain)
+  if (emailString.includes('@')) {
+    return emailString.split('@')[0].trim();
+  }
+  
+  return emailString.trim();
+}
+
+// Create title with subject and correspondent based on direction
+function createDocumentTitle(subject, direction, author, recipients) {
+  // Clean subject - only trim and limit length
+  let title = (subject || 'Kein Betreff').trim();
+  
+  // Add correspondent in brackets based on direction
+  let correspondent = '';
+  if (direction === 'Eingang' && author) {
+    // Incoming: show sender
+    correspondent = extractNameFromEmailAddress(author);
+  } else if (direction === 'Ausgang' && recipients && recipients.length > 0) {
+    // Outgoing: show first recipient
+    correspondent = extractNameFromEmailAddress(recipients[0]);
+  }
+  
+  if (correspondent) {
+    title = `${title} [${correspondent}]`;
+  }
+  
+  // Limit total length (Paperless can handle longer titles)
+  if (title.length > 200) {
+    title = title.substring(0, 197) + '...';
+  }
+  
+  return title;
 }
 
 async function getPaperlessConfig() {
