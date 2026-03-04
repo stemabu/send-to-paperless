@@ -1,6 +1,20 @@
 // Content script for messageDisplay - runs in every email view
 // Reads the QNote note and sends it to the background script
 
+// Prevent multiple executions if script is injected multiple times
+if (window.__qnoteReaderExecuted) {
+  console.log('⚠️ [QNote-Reader] Script already executed, skipping');
+  // Still send a message in case the previous execution timed out
+  // Small delay to ensure the background listener is ready
+  setTimeout(() => {
+    browser.runtime.sendMessage({
+      action: 'qnoteNoteAvailable',
+      noteText: window.__lastQnoteText || null
+    }).catch(() => {});
+  }, 100);
+} else {
+  window.__qnoteReaderExecuted = true;
+
 console.log('🔍 [QNote-Reader] Script started');
 
 function findQnoteElement() {
@@ -68,6 +82,7 @@ function tryReadQnote(attempts) {
     if (noteText && noteText.trim()) {
       console.log('✅ [QNote-Reader] Note text found:', noteText.trim());
       console.log('📤 [QNote-Reader] Sending message to background script');
+      window.__lastQnoteText = noteText.trim();
       browser.runtime.sendMessage({
         action: 'qnoteNoteAvailable',
         noteText: noteText.trim()
@@ -103,3 +118,4 @@ function tryReadQnote(attempts) {
 // Start trying to read QNote
 console.log('🚀 [QNote-Reader] Starting QNote search...');
 tryReadQnote(0);
+} // end else (not already executed)
