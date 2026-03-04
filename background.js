@@ -17,6 +17,9 @@ const MAX_BINARY_PREFIX_BYTES = 20;
 let currentPdfAttachments = [];
 let currentMessage = null;
 
+// Last QNote note received from the qnote-reader content script
+let lastKnownQnoteText = null;
+
 // Reusable TextDecoder for efficient decoding of ArrayBuffer/TypedArray
 const UTF8_DECODER = new TextDecoder('utf-8');
 
@@ -365,29 +368,10 @@ async function openEmailUploadDialog(message) {
         : fullMessage.headers.subject;
     }
 
-    // Try to read QNote note from the active messageDisplay tab
-    // QNote injects its note as .qnote-insidenote div into the email body DOM
-    let qnoteText = null;
-    try {
-      const displayTabs = await browser.tabs.query({
-        type: ["messageDisplay"]
-      });
-      if (displayTabs.length > 0 && displayTabs[0].id) {
-        const results = await browser.scripting.executeScript({
-          target: { tabId: displayTabs[0].id },
-          func: () => {
-            const el = document.querySelector('.qnote-insidenote');
-            return el ? (el.innerText || el.textContent || null) : null;
-          }
-        });
-        if (results && results[0] && results[0].result) {
-          qnoteText = String(results[0].result).trim() || null;
-        }
-      }
-    } catch (e) {
-      // QNote not installed or no note for this message - silently ignore
-      console.log('📝 QNote: could not read note:', e.message);
-    }
+    // Use the QNote note set by the qnote-reader content script
+    const qnoteText = lastKnownQnoteText;
+    // Reset for next message
+    lastKnownQnoteText = null;
 
     await browser.storage.local.set({
       emailUploadData: {
@@ -2425,6 +2409,11 @@ async function uploadPdfToPaperless(message, attachment, options = {}) {
 
 // Handle messages from the upload dialog
 browser.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
+  if (message.action === 'qnoteNoteAvailable') {
+    lastKnownQnoteText = message.noteText || null;
+    return;
+  }
+
   if (message.action === "emailUploadFromDisplay") {
     await handleEmailUploadFromDisplay(message.messageId);
     sendResponse({ success: true });
