@@ -359,8 +359,12 @@ async function handleEmailToPaperless(info) {
  * Timeout: 3.5 seconds (slightly longer than qnote-reader retry time)
  */
 function waitForQnote(timeoutMs = 3500) {
+  console.log('⏳ [Background] waitForQnote() called');
+  console.log('⏳ [Background] Current lastKnownQnoteText:', lastKnownQnoteText);
+
   // If note already available, return immediately
   if (lastKnownQnoteText !== null) {
+    console.log('✅ [Background] Note already available, returning immediately:', lastKnownQnoteText);
     const note = lastKnownQnoteText;
     lastKnownQnoteText = null; // Reset after reading
     return Promise.resolve(note);
@@ -368,12 +372,15 @@ function waitForQnote(timeoutMs = 3500) {
 
   // If a promise is already running, return it
   if (qnoteReadPromise) {
+    console.log('ℹ️ [Background] Returning existing promise');
     return qnoteReadPromise;
   }
 
   // Create new promise
+  console.log(`⏳ [Background] Creating new promise, waiting max ${timeoutMs}ms`);
   qnoteReadPromise = new Promise((resolve) => {
     const timeoutId = setTimeout(() => {
+      console.log('⏰ [Background] Timeout reached, resolving with null');
       qnoteReadResolver = null;
       qnoteReadPromise = null;
       resolve(null);
@@ -391,6 +398,9 @@ function waitForQnote(timeoutMs = 3500) {
 // Open email upload dialog
 async function openEmailUploadDialog(message) {
   try {
+    console.log('📧 [Background] openEmailUploadDialog() called');
+    console.log('📧 [Background] Message ID:', message.id);
+
     // Get all attachments (not just PDFs) - for email upload, we allow uploading
     // any attachment type since the email itself is converted to PDF
     const attachments = await browser.messages.listAttachments(message.id);
@@ -408,7 +418,9 @@ async function openEmailUploadDialog(message) {
     }
 
     // Wait for QNote note to be read (max 3.5 seconds)
+    console.log('⏳ [Background] Waiting for QNote note...');
     const qnoteText = await waitForQnote();
+    console.log('✅ [Background] waitForQnote resolved with:', qnoteText);
 
     await browser.storage.local.set({
       emailUploadData: {
@@ -432,12 +444,14 @@ async function openEmailUploadDialog(message) {
       }
     });
 
+    console.log('💾 [Background] Data saved to storage with qnoteText:', qnoteText);
+
     // Open the email upload dialog (centered, height 1000px)
     const dialogUrl = browser.runtime.getURL("email-upload-dialog.html");
     await createCenteredWindow(dialogUrl, 550, 1000);
 
   } catch (error) {
-    console.error("Error opening email upload dialog:", error);
+    console.error("❌ [Background] Error opening email upload dialog:", error);
     showNotification("Fehler beim Öffnen des Dialogs", "error");
   }
 }
@@ -2447,13 +2461,20 @@ async function uploadPdfToPaperless(message, attachment, options = {}) {
 // Handle messages from the upload dialog
 browser.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
   if (message.action === 'qnoteNoteAvailable') {
+    console.log('📥 [Background] Received qnoteNoteAvailable message');
+    console.log('📥 [Background] Note text:', message.noteText);
+
     lastKnownQnoteText = message.noteText || null;
+    console.log('📥 [Background] lastKnownQnoteText set to:', lastKnownQnoteText);
 
     // Resolve the waiting promise if it exists
     if (qnoteReadResolver) {
+      console.log('✅ [Background] Resolving waiting promise with note');
       qnoteReadResolver(message.noteText);
       qnoteReadResolver = null;
       qnoteReadPromise = null;
+    } else {
+      console.log('ℹ️ [Background] No waiting promise (note arrived before dialog opened)');
     }
 
     // Return a Promise as required by WebExtension API for async handlers
