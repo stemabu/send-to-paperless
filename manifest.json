@@ -43,6 +43,12 @@
     "page": "options.html",
     "open_in_tab": false
   },
+  "message_display_scripts": [
+    {
+      "js": ["qnote-reader.js"],
+      "run_at": "document_idle"
+    }
+  ],
   "icons": {
     "128": "icons/icon-128.png",
     "16": "icons/icon-16.png",
