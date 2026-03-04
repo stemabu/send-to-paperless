@@ -20,6 +20,10 @@ let currentMessage = null;
 // Last QNote note received from the qnote-reader content script
 let lastKnownQnoteText = null;
 
+// QNote reading state for async wait mechanism
+let qnoteReadPromise = null;
+let qnoteReadResolver = null;
+
 // Reusable TextDecoder for efficient decoding of ArrayBuffer/TypedArray
 const UTF8_DECODER = new TextDecoder('utf-8');
 
@@ -349,6 +353,41 @@ async function handleEmailToPaperless(info) {
   }
 }
 
+/**
+ * Wait for QNote note to be read by the content script.
+ * Returns a Promise that resolves with the note text (or null if not found).
+ * Timeout: 3.5 seconds (slightly longer than qnote-reader retry time)
+ */
+function waitForQnote(timeoutMs = 3500) {
+  // If note already available, return immediately
+  if (lastKnownQnoteText !== null) {
+    const note = lastKnownQnoteText;
+    lastKnownQnoteText = null; // Reset after reading
+    return Promise.resolve(note);
+  }
+
+  // If a promise is already running, return it
+  if (qnoteReadPromise) {
+    return qnoteReadPromise;
+  }
+
+  // Create new promise
+  qnoteReadPromise = new Promise((resolve) => {
+    const timeoutId = setTimeout(() => {
+      qnoteReadResolver = null;
+      qnoteReadPromise = null;
+      resolve(null);
+    }, timeoutMs);
+
+    qnoteReadResolver = (noteText) => {
+      clearTimeout(timeoutId);
+      resolve(noteText);
+    };
+  });
+
+  return qnoteReadPromise;
+}
+
 // Open email upload dialog
 async function openEmailUploadDialog(message) {
   try {
@@ -368,10 +407,8 @@ async function openEmailUploadDialog(message) {
         : fullMessage.headers.subject;
     }
 
-    // Use the QNote note set by the qnote-reader content script
-    const qnoteText = lastKnownQnoteText;
-    // Reset for next message
-    lastKnownQnoteText = null;
+    // Wait for QNote note to be read (max 3.5 seconds)
+    const qnoteText = await waitForQnote();
 
     await browser.storage.local.set({
       emailUploadData: {
@@ -2411,7 +2448,16 @@ async function uploadPdfToPaperless(message, attachment, options = {}) {
 browser.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
   if (message.action === 'qnoteNoteAvailable') {
     lastKnownQnoteText = message.noteText || null;
-    return;
+
+    // Resolve the waiting promise if it exists
+    if (qnoteReadResolver) {
+      qnoteReadResolver(message.noteText);
+      qnoteReadResolver = null;
+      qnoteReadPromise = null;
+    }
+
+    // Return a Promise as required by WebExtension API for async handlers
+    return Promise.resolve({ received: true });
   }
 
   if (message.action === "emailUploadFromDisplay") {

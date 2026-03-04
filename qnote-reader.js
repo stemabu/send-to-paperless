@@ -6,6 +6,7 @@ function findQnoteElement() {
   // not into the inner message display document.
   // Try multiple DOM levels and selectors.
   const selectors = [
+    '.qnote-text',        // Direct text container (more specific)
     '.qnote-insidenote',
     '#qnote-insidenote',
     '[class*="qnote-inside"]',
