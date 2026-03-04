@@ -405,9 +405,7 @@ async function openEmailUploadDialog(message) {
     // because message_display_scripts is unreliable in Manifest V3
     console.log('💉 [Background] Injecting qnote-reader.js manually...');
     const tabs = await browser.tabs.query({
-      active: true,
-      currentWindow: true,
-      mailTab: false  // We want message display tabs, not mail tabs
+      currentWindow: true
     });
     console.log('💉 [Background] Found tabs:', tabs.length);
     if (tabs.length > 0) {
@@ -421,11 +419,12 @@ async function openEmailUploadDialog(message) {
           console.log('✅ [Background] Successfully injected qnote-reader.js into tab', tab.id);
         } catch (injectError) {
           console.warn('⚠️ [Background] Failed to inject into tab', tab.id, ':', injectError.message);
-          // Continue with next tab
+          // Expected for some tab types (settings, about pages, etc.)
+          // Continue with next tab - not critical
         }
       }
     } else {
-      console.warn('⚠️ [Background] No active message display tab found for injection');
+      console.warn('⚠️ [Background] No tabs found in current window for injection');
     }
 
     // Get all attachments (not just PDFs) - for email upload, we allow uploading
