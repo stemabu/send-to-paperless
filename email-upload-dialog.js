@@ -5,6 +5,7 @@ let currentAttachments = [];
 let emailBody = '';
 let isHtmlBody = false;
 let qnoteText = null;
+let qnoteDate = null;
 
 // Storage key for recently used tags
 const RECENTLY_USED_TAGS_KEY = 'recentlyUsedTags';
@@ -272,7 +273,8 @@ async function loadEmailData() {
 
     // Display QNote note if available
     qnoteText = uploadData.qnoteText || null;
-    console.log('📧 [Dialog] Loaded qnoteText from storage:', qnoteText);
+    qnoteDate = uploadData.qnoteDate || null;
+    console.log('📧 [Dialog] Loaded qnoteText from storage:', qnoteText, 'qnoteDate:', qnoteDate);
 
     if (qnoteText) {
       console.log('✅ [Dialog] QNote text exists, displaying it');
@@ -1207,7 +1209,8 @@ async function handleUpload(event) {
         correspondent: correspondent,
         tags: selectedTags,
         documentDate: documentDate,
-        qnoteText: qnoteText
+        qnoteText: qnoteText,
+        qnoteDate: qnoteDate
       });
     } else {
       // Generate PDF locally using html2canvas + jsPDF
