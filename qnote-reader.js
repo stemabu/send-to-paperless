@@ -9,7 +9,8 @@ if (window.__qnoteReaderExecuted) {
   setTimeout(() => {
     browser.runtime.sendMessage({
       action: 'qnoteNoteAvailable',
-      noteText: window.__lastQnoteText || null
+      noteText: window.__lastQnoteText || null,
+      noteDate: window.__lastQnoteDate || null
     }).catch(() => {});
   }, 100);
 } else {
@@ -22,13 +23,13 @@ function findQnoteElement() {
 
   // QNote injects its note into the outer Thunderbird window (parent frame),
   // not into the inner message display document.
-  // Try multiple DOM levels and selectors.
+  // Prefer the container element so we can also read the title/date.
   const selectors = [
-    '.qnote-text',        // Direct text container (more specific)
-    '.qnote-insidenote',
+    '.qnote-insidenote',  // Container with both title and text (preferred)
     '#qnote-insidenote',
     '[class*="qnote-inside"]',
-    '[id*="qnote"]'
+    '[id*="qnote"]',
+    '.qnote-text'         // Fallback: direct text container only
   ];
 
   const documents = [];
@@ -78,14 +79,32 @@ function tryReadQnote(attempts) {
 
   const el = findQnoteElement();
   if (el) {
-    const noteText = el.innerText || el.textContent || null;
+    // Try to get text and date from the container structure
+    const qnoteTextElement = el.querySelector ? el.querySelector('.qnote-text') : null;
+    const noteText = qnoteTextElement
+      ? (qnoteTextElement.innerText || qnoteTextElement.textContent || null)
+      : (el.innerText || el.textContent || null);
+
+    // Extract date/time from the title element
+    let noteDate = null;
+    const qnoteTitleElement = el.querySelector ? el.querySelector('.qnote-title') : null;
+    if (qnoteTitleElement) {
+      const titleText = qnoteTitleElement.textContent || qnoteTitleElement.innerText;
+      // Example: "QNote: 4.3.2026, 12:04" -> "4.3.2026, 12:04"
+      const match = titleText.match(/QNote:\s*(.+)/);
+      noteDate = match ? match[1].trim() : null;
+    }
+
     if (noteText && noteText.trim()) {
       console.log('✅ [QNote-Reader] Note text found:', noteText.trim());
+      console.log('✅ [QNote-Reader] Note date found:', noteDate);
       console.log('📤 [QNote-Reader] Sending message to background script');
       window.__lastQnoteText = noteText.trim();
+      window.__lastQnoteDate = noteDate;
       browser.runtime.sendMessage({
         action: 'qnoteNoteAvailable',
-        noteText: noteText.trim()
+        noteText: noteText.trim(),
+        noteDate: noteDate
       }).then(() => {
         console.log('✅ [QNote-Reader] Message sent successfully');
       }).catch(err => {
@@ -106,7 +125,8 @@ function tryReadQnote(attempts) {
     console.log('❌ [QNote-Reader] No note found after all attempts, sending null');
     browser.runtime.sendMessage({
       action: 'qnoteNoteAvailable',
-      noteText: null
+      noteText: null,
+      noteDate: null
     }).then(() => {
       console.log('✅ [QNote-Reader] Null message sent successfully');
     }).catch(err => {

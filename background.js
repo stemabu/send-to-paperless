@@ -19,6 +19,7 @@ let currentMessage = null;
 
 // Last QNote note received from the qnote-reader content script
 let lastKnownQnoteText = null;
+let lastKnownQnoteDate = null;
 
 // QNote reading state for async wait mechanism
 let qnoteReadPromise = null;
@@ -365,9 +366,10 @@ function waitForQnote(timeoutMs = 3500) {
   // If note already available, return immediately
   if (lastKnownQnoteText !== null) {
     console.log('✅ [Background] Note already available, returning immediately:', lastKnownQnoteText);
-    const note = lastKnownQnoteText;
+    const result = { text: lastKnownQnoteText, date: lastKnownQnoteDate };
     lastKnownQnoteText = null; // Reset after reading
-    return Promise.resolve(note);
+    lastKnownQnoteDate = null;
+    return Promise.resolve(result);
   }
 
   // If a promise is already running, return it
@@ -386,9 +388,9 @@ function waitForQnote(timeoutMs = 3500) {
       resolve(null);
     }, timeoutMs);
 
-    qnoteReadResolver = (noteText) => {
+    qnoteReadResolver = (noteData) => {
       clearTimeout(timeoutId);
-      resolve(noteText);
+      resolve(noteData);
     };
   });
 
@@ -445,8 +447,8 @@ async function openEmailUploadDialog(message) {
 
     // Wait for QNote note to be read (max 3.5 seconds)
     console.log('⏳ [Background] Waiting for QNote note...');
-    const qnoteText = await waitForQnote();
-    console.log('✅ [Background] waitForQnote resolved with:', qnoteText);
+    const qnoteData = await waitForQnote();
+    console.log('✅ [Background] waitForQnote resolved with:', qnoteData);
 
     await browser.storage.local.set({
       emailUploadData: {
@@ -466,11 +468,12 @@ async function openEmailUploadDialog(message) {
           contentType: att.contentType
         })),
         emailBody: emailBody,
-        qnoteText: qnoteText
+        qnoteText: qnoteData?.text || null,
+        qnoteDate: qnoteData?.date || null
       }
     });
 
-    console.log('💾 [Background] Data saved to storage with qnoteText:', qnoteText);
+    console.log('💾 [Background] Data saved to storage with qnoteText:', qnoteData?.text, 'qnoteDate:', qnoteData?.date);
 
     // Open the email upload dialog (centered, height 1000px)
     const dialogUrl = browser.runtime.getURL("email-upload-dialog.html");
@@ -1306,7 +1309,7 @@ function getFileIcon(filename) {
 
 // Create HTML template for email (for Gotenberg conversion)
 // Based on Paperless-ngx email_msg_template.html but simplified with inline CSS
-function createEmailHtml(messageData, emailBodyData, selectedAttachments, thunderbirdTags = [], qnoteText = null) {
+function createEmailHtml(messageData, emailBodyData, selectedAttachments, thunderbirdTags = [], qnoteText = null, qnoteDate = null) {
   const dateStr = new Date(messageData.date).toLocaleString('de-DE', {
     year: 'numeric', month: '2-digit', day: '2-digit',
     hour: '2-digit', minute: '2-digit'
@@ -1379,14 +1382,20 @@ function createEmailHtml(messageData, emailBodyData, selectedAttachments, thunde
     `;
   }
 
-  // Build QNote section if note exists
+  // Build QNote section if note exists - will be placed ABOVE the email header
   let qnoteSection = '';
   if (qnoteText && qnoteText.trim()) {
     const escapedNote = escapeHtml(qnoteText.trim());
+
+    // Format: "Notiz (4.3.2026, 12:04):" if date available, otherwise just "Notiz:"
+    const noteHeader = qnoteDate ?
+      `Notiz (${escapeHtml(qnoteDate)}):` :
+      'Notiz:';
+
     qnoteSection = `
-      <div class="header-row qnote-section">
-        <span class="header-label">Notiz:</span>
-        <span class="header-value qnote-text">${escapedNote.replace(/\n/g, '<br>')}</span>
+      <div class="qnote-block">
+        <div class="qnote-header">${noteHeader}</div>
+        <div class="qnote-content">${escapedNote.replace(/\n/g, '<br>')}</div>
       </div>
     `;
   }
@@ -1468,16 +1477,23 @@ function createEmailHtml(messageData, emailBodyData, selectedAttachments, thunde
     .tags-container {
       display: inline;
     }
-    .qnote-section {
+    .qnote-block {
       background: #fef9c3;
-      border-left: 3px solid #eab308;
-      padding: 4px 8px;
-      border-radius: 2px;
-      margin-top: 4px;
+      border: 2px solid #eab308;
+      border-radius: 6px;
+      padding: 12px 16px;
+      margin-bottom: 20px;
     }
-    .qnote-text {
+    .qnote-header {
+      font-weight: 600;
+      color: #854d0e;
+      margin-bottom: 8px;
+      font-size: 14px;
+    }
+    .qnote-content {
       white-space: pre-wrap;
       color: #1a1a1a;
+      line-height: 1.5;
     }
     /* Quotes - Thunderbird-style */
     blockquote { 
@@ -1498,6 +1514,7 @@ function createEmailHtml(messageData, emailBodyData, selectedAttachments, thunde
 </head>
 <body>
   <div class="container">
+    ${qnoteSection}
     <div class="header">
       <div class="header-row">
         <span class="header-label">Datum:</span>
@@ -1517,7 +1534,6 @@ function createEmailHtml(messageData, emailBodyData, selectedAttachments, thunde
         <span class="header-value">${escapeHtml(ccRecipients)}</span>
       </div>
       ` : ''}
-      ${qnoteSection}
       <div class="header-row">
         <span class="header-label">Betreff:</span>
         <span class="header-value subject">${escapeHtml(messageData.subject || 'Kein Betreff')}</span>
@@ -1538,7 +1554,7 @@ function createEmailHtml(messageData, emailBodyData, selectedAttachments, thunde
 
 // Convert email to PDF via Gotenberg HTTP API
 // Gotenberg provides HTML to PDF conversion via Chromium
-async function convertEmailToPdfViaGotenberg(messageData, emailBodyData, selectedAttachments, gotenbergUrl, qnoteText = null) {
+async function convertEmailToPdfViaGotenberg(messageData, emailBodyData, selectedAttachments, gotenbergUrl, qnoteText = null, qnoteDate = null) {
   
   // Get Thunderbird tag labels AND colors if available
   let thunderbirdTags = [];
@@ -1560,7 +1576,7 @@ async function convertEmailToPdfViaGotenberg(messageData, emailBodyData, selecte
   }
   
   // Create HTML content with tag objects (not just labels)
-  const htmlContent = createEmailHtml(messageData, emailBodyData, selectedAttachments, thunderbirdTags, qnoteText);
+  const htmlContent = createEmailHtml(messageData, emailBodyData, selectedAttachments, thunderbirdTags, qnoteText, qnoteDate);
   
   // Create FormData for Gotenberg
   const formData = new FormData();
@@ -1590,7 +1606,7 @@ async function convertEmailToPdfViaGotenberg(messageData, emailBodyData, selecte
 
 // Upload email as HTML file for Paperless Gotenberg conversion (better character encoding)
 // Now uses direct Gotenberg API call instead of relying on Paperless internal Gotenberg
-async function uploadEmailAsHtml(messageData, selectedAttachments, direction, correspondent, tags, documentDate, qnoteText = null) {
+async function uploadEmailAsHtml(messageData, selectedAttachments, direction, correspondent, tags, documentDate, qnoteText = null, qnoteDate = null) {
   
   // Get Gotenberg URL from settings
   const gotenbergResult = await browser.storage.sync.get(['gotenbergUrl']);
@@ -1857,7 +1873,7 @@ async function uploadEmailAsHtml(messageData, selectedAttachments, direction, co
     // Convert email to PDF via Gotenberg
     let pdfBlob;
     try {
-      pdfBlob = await convertEmailToPdfViaGotenberg(messageData, emailBodyData, selectedAttachments, gotenbergUrl, qnoteText);
+      pdfBlob = await convertEmailToPdfViaGotenberg(messageData, emailBodyData, selectedAttachments, gotenbergUrl, qnoteText, qnoteDate);
     } catch (gotenbergError) {
       console.error('📧 Gotenberg conversion failed:', gotenbergError);
       return {
@@ -2489,14 +2505,16 @@ browser.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
   if (message.action === 'qnoteNoteAvailable') {
     console.log('📥 [Background] Received qnoteNoteAvailable message');
     console.log('📥 [Background] Note text:', message.noteText);
+    console.log('📥 [Background] Note date:', message.noteDate);
 
     lastKnownQnoteText = message.noteText || null;
-    console.log('📥 [Background] lastKnownQnoteText set to:', lastKnownQnoteText);
+    lastKnownQnoteDate = message.noteDate || null;
+    console.log('📥 [Background] Saved - Text:', lastKnownQnoteText, 'Date:', lastKnownQnoteDate);
 
     // Resolve the waiting promise if it exists
     if (qnoteReadResolver) {
       console.log('✅ [Background] Resolving waiting promise with note');
-      qnoteReadResolver(message.noteText);
+      qnoteReadResolver({ text: message.noteText, date: message.noteDate });
       qnoteReadResolver = null;
       qnoteReadPromise = null;
     } else {
@@ -2673,7 +2691,7 @@ browser.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
 
   // Handle email upload as HTML file (Paperless Gotenberg conversion - better character encoding)
   if (message.action === "uploadEmailAsHtml") {
-    const { messageData, selectedAttachments, direction, correspondent, tags, documentDate, qnoteText } = message;
+    const { messageData, selectedAttachments, direction, correspondent, tags, documentDate, qnoteText, qnoteDate } = message;
 
     // Return the Promise directly - the caller will receive the resolved value
     return uploadEmailAsHtml(
@@ -2683,7 +2701,8 @@ browser.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
       correspondent,
       tags,
       documentDate,
-      qnoteText || null
+      qnoteText || null,
+      qnoteDate || null
     );
   }
 
