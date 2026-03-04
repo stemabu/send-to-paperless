@@ -16,7 +16,8 @@
     "messagesTagsList",
     "menus",
     "notifications",
-    "storage"
+    "storage",
+    "scripting"
   ],
   "optional_host_permissions": [
     "http://*/*",
