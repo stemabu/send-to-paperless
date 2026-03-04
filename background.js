@@ -365,6 +365,31 @@ async function openEmailUploadDialog(message) {
         : fullMessage.headers.subject;
     }
 
+    // Try to read QNote note from the active messageDisplay tab
+    // QNote injects its note as .qnote-insidenote div into the email body DOM
+    let qnoteText = null;
+    try {
+      const displayTabs = await browser.tabs.query({
+        type: ["messageDisplay"],
+        active: true,
+        currentWindow: true
+      });
+      if (displayTabs.length > 0 && displayTabs[0].id) {
+        const results = await browser.tabs.executeScript(displayTabs[0].id, {
+          code: `(function(){
+            const el = document.querySelector('.qnote-insidenote');
+            return el ? (el.innerText || el.textContent || null) : null;
+          })()`
+        });
+        if (results && results[0]) {
+          qnoteText = String(results[0]).trim() || null;
+        }
+      }
+    } catch (e) {
+      // QNote not installed or no note for this message - silently ignore
+      console.log('📝 QNote: could not read note:', e.message);
+    }
+
     await browser.storage.local.set({
       emailUploadData: {
         message: {
@@ -382,7 +407,8 @@ async function openEmailUploadDialog(message) {
           size: att.size,
           contentType: att.contentType
         })),
-        emailBody: emailBody
+        emailBody: emailBody,
+        qnoteText: qnoteText
       }
     });
 
@@ -1220,7 +1246,7 @@ function getFileIcon(filename) {
 
 // Create HTML template for email (for Gotenberg conversion)
 // Based on Paperless-ngx email_msg_template.html but simplified with inline CSS
-function createEmailHtml(messageData, emailBodyData, selectedAttachments, thunderbirdTags = []) {
+function createEmailHtml(messageData, emailBodyData, selectedAttachments, thunderbirdTags = [], qnoteText = null) {
   const dateStr = new Date(messageData.date).toLocaleString('de-DE', {
     year: 'numeric', month: '2-digit', day: '2-digit',
     hour: '2-digit', minute: '2-digit'
@@ -1289,6 +1315,18 @@ function createEmailHtml(messageData, emailBodyData, selectedAttachments, thunde
       <div class="header-row">
         <span class="header-label">Anhänge:</span>
         <span class="header-value-block attachments-list">${attachmentList}</span>
+      </div>
+    `;
+  }
+
+  // Build QNote section if note exists
+  let qnoteSection = '';
+  if (qnoteText && qnoteText.trim()) {
+    const escapedNote = escapeHtml(qnoteText.trim());
+    qnoteSection = `
+      <div class="header-row qnote-section">
+        <span class="header-label">Notiz:</span>
+        <span class="header-value qnote-text">${escapedNote.replace(/\n/g, '<br>')}</span>
       </div>
     `;
   }
@@ -1370,6 +1408,17 @@ function createEmailHtml(messageData, emailBodyData, selectedAttachments, thunde
     .tags-container {
       display: inline;
     }
+    .qnote-section {
+      background: #fef9c3;
+      border-left: 3px solid #eab308;
+      padding: 4px 8px;
+      border-radius: 2px;
+      margin-top: 4px;
+    }
+    .qnote-text {
+      white-space: pre-wrap;
+      color: #1a1a1a;
+    }
     /* Quotes - Thunderbird-style */
     blockquote { 
       margin: 0.5em 0; 
@@ -1408,6 +1457,7 @@ function createEmailHtml(messageData, emailBodyData, selectedAttachments, thunde
         <span class="header-value">${escapeHtml(ccRecipients)}</span>
       </div>
       ` : ''}
+      ${qnoteSection}
       <div class="header-row">
         <span class="header-label">Betreff:</span>
         <span class="header-value subject">${escapeHtml(messageData.subject || 'Kein Betreff')}</span>
@@ -1428,7 +1478,7 @@ function createEmailHtml(messageData, emailBodyData, selectedAttachments, thunde
 
 // Convert email to PDF via Gotenberg HTTP API
 // Gotenberg provides HTML to PDF conversion via Chromium
-async function convertEmailToPdfViaGotenberg(messageData, emailBodyData, selectedAttachments, gotenbergUrl) {
+async function convertEmailToPdfViaGotenberg(messageData, emailBodyData, selectedAttachments, gotenbergUrl, qnoteText = null) {
   
   // Get Thunderbird tag labels AND colors if available
   let thunderbirdTags = [];
@@ -1450,7 +1500,7 @@ async function convertEmailToPdfViaGotenberg(messageData, emailBodyData, selecte
   }
   
   // Create HTML content with tag objects (not just labels)
-  const htmlContent = createEmailHtml(messageData, emailBodyData, selectedAttachments, thunderbirdTags);
+  const htmlContent = createEmailHtml(messageData, emailBodyData, selectedAttachments, thunderbirdTags, qnoteText);
   
   // Create FormData for Gotenberg
   const formData = new FormData();
@@ -1480,7 +1530,7 @@ async function convertEmailToPdfViaGotenberg(messageData, emailBodyData, selecte
 
 // Upload email as HTML file for Paperless Gotenberg conversion (better character encoding)
 // Now uses direct Gotenberg API call instead of relying on Paperless internal Gotenberg
-async function uploadEmailAsHtml(messageData, selectedAttachments, direction, correspondent, tags, documentDate) {
+async function uploadEmailAsHtml(messageData, selectedAttachments, direction, correspondent, tags, documentDate, qnoteText = null) {
   
   // Get Gotenberg URL from settings
   const gotenbergResult = await browser.storage.sync.get(['gotenbergUrl']);
@@ -1747,7 +1797,7 @@ async function uploadEmailAsHtml(messageData, selectedAttachments, direction, co
     // Convert email to PDF via Gotenberg
     let pdfBlob;
     try {
-      pdfBlob = await convertEmailToPdfViaGotenberg(messageData, emailBodyData, selectedAttachments, gotenbergUrl);
+      pdfBlob = await convertEmailToPdfViaGotenberg(messageData, emailBodyData, selectedAttachments, gotenbergUrl, qnoteText);
     } catch (gotenbergError) {
       console.error('📧 Gotenberg conversion failed:', gotenbergError);
       return {
@@ -2542,7 +2592,7 @@ browser.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
 
   // Handle email upload as HTML file (Paperless Gotenberg conversion - better character encoding)
   if (message.action === "uploadEmailAsHtml") {
-    const { messageData, selectedAttachments, direction, correspondent, tags, documentDate } = message;
+    const { messageData, selectedAttachments, direction, correspondent, tags, documentDate, qnoteText } = message;
 
     // Return the Promise directly - the caller will receive the resolved value
     return uploadEmailAsHtml(
@@ -2551,7 +2601,8 @@ browser.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
       direction,
       correspondent,
       tags,
-      documentDate
+      documentDate,
+      qnoteText || null
     );
   }
 
