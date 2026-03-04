@@ -4,6 +4,7 @@ let currentMessage = null;
 let currentAttachments = [];
 let emailBody = '';
 let isHtmlBody = false;
+let qnoteText = null;
 
 // Storage key for recently used tags
 const RECENTLY_USED_TAGS_KEY = 'recentlyUsedTags';
@@ -266,6 +267,17 @@ async function loadEmailData() {
       } catch (error) {
         console.error('Error loading Thunderbird tags:', error);
         // Don't show the row if there's an error
+      }
+    }
+
+    // Display QNote note if available
+    qnoteText = uploadData.qnoteText || null;
+    if (qnoteText) {
+      const qnoteRow = document.getElementById('emailQnoteRow');
+      const qnoteEl = document.getElementById('emailQnote');
+      if (qnoteRow && qnoteEl) {
+        qnoteEl.textContent = qnoteText;
+        qnoteRow.style.display = 'block';
       }
     }
 
@@ -581,6 +593,13 @@ async function generateEmailPdf() {
     }
   }
 
+  // QNote text for PDF header
+  let qnoteLines = [];
+  if (qnoteText && qnoteText.trim()) {
+    doc.setFontSize(10);
+    qnoteLines = doc.splitTextToSize(qnoteText.trim(), contentWidth - labelWidth - headerPadding);
+  }
+
   // Pre-calculate all text lines for accurate header height
   doc.setFontSize(10);
   const subjectLines = doc.splitTextToSize(currentMessage.subject || '', contentWidth - labelWidth - headerPadding);
@@ -600,6 +619,9 @@ async function generateEmailPdf() {
   }
   if (attachmentTextLines.length > 0) {
     headerContentHeight += attachmentTextLines.length * lineHeight; // Attachment lines
+  }
+  if (qnoteLines.length > 0) {
+    headerContentHeight += qnoteLines.length * lineHeight; // QNote lines
   }
   
   // Total header height = top padding + content + bottom padding
@@ -674,6 +696,18 @@ async function generateEmailPdf() {
     });
     yPosition += attachmentTextLines.length * lineHeight;
     doc.setFontSize(10);
+  }
+
+  // QNote line (if any)
+  if (qnoteLines.length > 0) {
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(10);
+    doc.text('Notiz:', textX, yPosition + 3);
+    doc.setFont('helvetica', 'normal');
+    qnoteLines.forEach((line, index) => {
+      doc.text(line, valueX, yPosition + 3 + (index * lineHeight));
+    });
+    yPosition += qnoteLines.length * lineHeight;
   }
 
   // Position for separator line - directly after header box
@@ -1164,7 +1198,8 @@ async function handleUpload(event) {
         direction: direction,
         correspondent: correspondent,
         tags: selectedTags,
-        documentDate: documentDate
+        documentDate: documentDate,
+        qnoteText: qnoteText
       });
     } else {
       // Generate PDF locally using html2canvas + jsPDF

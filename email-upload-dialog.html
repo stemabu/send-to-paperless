@@ -305,6 +305,14 @@
       align-items: center;
       gap: 4px;
     }
+
+    .qnote-value {
+      white-space: pre-wrap;
+      background: #fef9c3;
+      padding: 2px 6px;
+      border-left: 3px solid #eab308;
+      display: inline-block;
+    }
   </style>
 </head>
 
@@ -329,6 +337,9 @@
         <div class="email-info-row"><strong>Datum:</strong> <span id="emailDate"></span></div>
         <div class="email-info-row" id="emailTagsRow" style="display: none;">
           <strong>Schlagwörter:</strong> <span id="emailTags"></span>
+        </div>
+        <div class="email-info-row" id="emailQnoteRow" style="display: none;">
+          <strong>📝 Notiz (QNote):</strong> <span id="emailQnote" class="qnote-value"></span>
         </div>
       </div>
 
