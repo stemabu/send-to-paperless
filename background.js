@@ -370,19 +370,18 @@ async function openEmailUploadDialog(message) {
     let qnoteText = null;
     try {
       const displayTabs = await browser.tabs.query({
-        type: ["messageDisplay"],
-        active: true,
-        currentWindow: true
+        type: ["messageDisplay"]
       });
       if (displayTabs.length > 0 && displayTabs[0].id) {
-        const results = await browser.tabs.executeScript(displayTabs[0].id, {
-          code: `(function(){
+        const results = await browser.scripting.executeScript({
+          target: { tabId: displayTabs[0].id },
+          func: () => {
             const el = document.querySelector('.qnote-insidenote');
             return el ? (el.innerText || el.textContent || null) : null;
-          })()`
+          }
         });
-        if (results && results[0]) {
-          qnoteText = String(results[0]).trim() || null;
+        if (results && results[0] && results[0].result) {
+          qnoteText = String(results[0].result).trim() || null;
         }
       }
     } catch (e) {
