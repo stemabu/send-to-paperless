@@ -272,13 +272,21 @@ async function loadEmailData() {
 
     // Display QNote note if available
     qnoteText = uploadData.qnoteText || null;
+    console.log('📧 [Dialog] Loaded qnoteText from storage:', qnoteText);
+
     if (qnoteText) {
+      console.log('✅ [Dialog] QNote text exists, displaying it');
       const qnoteRow = document.getElementById('emailQnoteRow');
       const qnoteEl = document.getElementById('emailQnote');
       if (qnoteRow && qnoteEl) {
         qnoteEl.textContent = qnoteText;
         qnoteRow.style.display = 'block';
+        console.log('✅ [Dialog] QNote row made visible');
+      } else {
+        console.error('❌ [Dialog] QNote DOM elements not found!');
       }
+    } else {
+      console.log('ℹ️ [Dialog] No QNote text available');
     }
 
     // Populate attachments if any
